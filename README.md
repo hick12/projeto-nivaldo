@@ -67,18 +67,17 @@ pip install -r requirements.txt
 psql -U postgres -f SQL/usuario_app.sql
 ```
 
-Isso cria o papel `torra_app` e o banco `torra_terra`. **Troque a senha
-dentro do arquivo antes de rodar.**
+Isso cria o papel `torra_app` e os bancos `torra_terra` e
+`torra_terra_teste`. **Em qualquer ambiente que não seja a sua máquina,
+troque a senha dentro do arquivo antes de rodar.**
 
 > A aplicação usa usuário próprio, nunca o superusuário `postgres`. O
 > superusuário pode dropar qualquer coisa no cluster inteiro; um bug rodando
 > com ele é catastrófico e irreversível.
 
-Crie também o banco de testes:
-
-```bash
-psql -U postgres -c "CREATE DATABASE torra_terra_teste OWNER torra_app"
-```
+O banco de testes é separado de propósito: o `pytest` derruba e recria as
+tabelas a cada execução, e apontar para o banco de desenvolvimento apagaria
+o catálogo e os pedidos da demonstração no meio de uma rodada.
 
 ### 4. Configurar as variáveis de ambiente
 

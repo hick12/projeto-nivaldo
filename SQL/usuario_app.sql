@@ -28,6 +28,11 @@ ALTER ROLE torra_app NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
 -- ---------------------------------------------------------------------
 CREATE DATABASE torra_terra WITH OWNER torra_app ENCODING 'UTF8';
 
+-- Banco separado para o pytest. Os testes derrubam e recriam as tabelas a
+-- cada execucao — apontar para o banco de desenvolvimento apagaria o
+-- catalogo e os pedidos da demonstracao no meio de um `pytest`.
+CREATE DATABASE torra_terra_teste WITH OWNER torra_app ENCODING 'UTF8';
+
 -- Do ponto daqui para baixo, conecte-se ao banco novo:
 --     \c torra_terra
 --
