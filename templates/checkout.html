@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block titulo %}Finalizar compra — Torra &amp; Terra{% endblock %}
+
+{% block conteudo %}
+
+<h1 class="titulo-secao">Finalizar compra</h1>
+
+<p class="rotulo">Conferência do pedido</p>
+
+<ul class="linhas">
+  {% for linha in linhas %}
+    <li class="linha">
+      <div>
+        <p class="linha-nome">{{ linha.produto.nome }}</p>
+        <p class="linha-detalhe">
+          Moagem {{ linha.moagem|lower }} · {{ linha.quantidade }} × {{ linha.produto.preco|brl }}
+        </p>
+      </div>
+      <p class="preco">{{ linha.subtotal|brl }}</p>
+    </li>
+  {% endfor %}
+</ul>
+
+<div class="resumo">
+  <p class="resumo-rotulo">Total</p>
+  <p class="resumo-total">{{ total|brl }}</p>
+</div>
+
+<p class="campo-ajuda">
+  Ao confirmar, o pedido é gravado e o estoque é baixado na mesma transação.
+  Se faltar estoque de qualquer café, nada é gravado e você volta ao carrinho
+  com a mensagem dizendo qual faltou.
+</p>
+
+<form class="formulario" method="post" action="{{ url_for('checkout') }}">
+  <div class="acoes">
+    <button class="botao botao-primario" type="submit">
+      Confirmar pedido — {{ total|brl }}
+    </button>
+    <a class="botao botao-secundario" href="{{ url_for('carrinho') }}">
+      Voltar ao carrinho
+    </a>
+  </div>
+</form>
+
+{% endblock %}

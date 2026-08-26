@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block titulo %}Meus pedidos — Torra &amp; Terra{% endblock %}
+
+{% block conteudo %}
+
+<h1 class="titulo-secao">Meus pedidos</h1>
+
+{% if pedidos %}
+
+  {% for pedido in pedidos %}
+    <article class="pedido">
+      <header class="pedido-cabecalho">
+        <div>
+          <p class="pedido-numero">Pedido #{{ pedido.id }}</p>
+          <p class="linha-detalhe">{{ pedido.criado_em.strftime('%d/%m/%Y às %H:%M') }}</p>
+        </div>
+        <div class="linha-valores">
+          <span class="selo">{{ pedido.status|lower }}</span>
+          <p class="preco">{{ pedido.total|brl }}</p>
+        </div>
+      </header>
+
+      <ul class="pedido-itens">
+        {% for item in pedido.itens %}
+          <li class="pedido-item">
+            <span>
+              {{ item.quantidade }} × {{ item.produto.nome }}
+              <span class="linha-detalhe">— moagem {{ item.moagem|lower }}</span>
+            </span>
+            <span>{{ item.subtotal|brl }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+
+      <p class="campo-ajuda">
+        Os valores acima são os preços da data da compra, congelados no pedido.
+      </p>
+    </article>
+  {% endfor %}
+
+{% else %}
+
+  <p class="vazio">Você ainda não fez nenhum pedido.</p>
+
+  <div class="acoes">
+    <a class="botao botao-primario" href="{{ url_for('catalogo') }}">
+      Ver o catálogo
+    </a>
+  </div>
+
+{% endif %}
+
+{% endblock %}

@@ -29,6 +29,7 @@
       </a>
 
       {% if cliente_logado %}
+        <a href="{{ url_for('meus_pedidos') }}">Meus pedidos</a>
         <a href="{{ url_for('sair') }}">Sair</a>
       {% else %}
         <a href="{{ url_for('login') }}">Entrar</a>

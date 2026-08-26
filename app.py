@@ -369,6 +369,128 @@ def carrinho_detalhado() -> tuple[list[dict], Decimal]:
     return linhas, total
 
 
+# =====================================================================
+# A transacao de checkout
+#
+# O coracao do trabalho. Tudo-ou-nada:
+#
+#     BEGIN
+#      |- SELECT ... FOR UPDATE  (trava o estoque de cada cafe)
+#      |- valida existencia e saldo de TODOS os itens
+#      |- INSERT do pedido
+#      |- INSERT de cada item, com preco_unitario congelado
+#      |- UPDATE do estoque
+#      +- COMMIT   ·   ROLLBACK em qualquer falha
+# =====================================================================
+
+class ErroCheckout(Exception):
+    """Falha de negocio que impede o fechamento do pedido."""
+
+
+class CarrinhoVazio(ErroCheckout):
+    pass
+
+
+class ProdutoInexistente(ErroCheckout):
+    pass
+
+
+class EstoqueInsuficiente(ErroCheckout):
+    def __init__(self, nome: str, disponivel: int, pedido: int):
+        self.nome = nome
+        self.disponivel = disponivel
+        self.pedido = pedido
+        super().__init__(
+            f"Estoque insuficiente de {nome}: voce pediu {pedido} "
+            f"e temos {disponivel} em estoque."
+        )
+
+
+def finalizar_pedido(cliente_id: int, linhas_carrinho: list[dict]) -> Pedido:
+    """Transforma o carrinho em pedido persistido, em transacao unica.
+
+    Ou grava tudo — pedido, itens e baixa de estoque — ou nao grava nada.
+    Levanta ErroCheckout em qualquer falha de negocio, sempre depois de
+    desfazer a transacao inteira.
+    """
+    if not linhas_carrinho:
+        raise CarrinhoVazio("Seu carrinho esta vazio.")
+
+    try:
+        # Trava sempre na mesma ordem crescente de id. Duas compras
+        # simultaneas que travassem os mesmos cafes em ordens opostas
+        # ficariam em deadlock, uma esperando o lock da outra; ordenar
+        # elimina o ciclo antes que ele exista.
+        ordenadas = sorted(linhas_carrinho, key=lambda l: l["produto_id"])
+
+        # --- Fase 1: travar e validar TODOS os itens -------------------
+        #
+        # Nada e inserido antes desta fase terminar. Assim o caso de erro
+        # nao chega sequer a criar o cabecalho do pedido — o rollback
+        # continua sendo obrigatorio, mas o banco trabalha menos.
+        travados = []
+        for linha in ordenadas:
+            # with_for_update() gera o SELECT ... FOR UPDATE: segura a linha
+            # do produto ate o fim da transacao. Sem isso, duas compras
+            # simultaneas leem o mesmo estoque 1, ambas aprovam, e o mesmo
+            # lote e vendido duas vezes.
+            produto = db.session.scalar(
+                db.select(Produto)
+                .where(Produto.id == linha["produto_id"])
+                .with_for_update()
+            )
+
+            if produto is None:
+                raise ProdutoInexistente(
+                    "Um dos cafes do seu carrinho nao esta mais disponivel. "
+                    "Revise o carrinho e tente de novo."
+                )
+
+            if produto.estoque < linha["quantidade"]:
+                raise EstoqueInsuficiente(
+                    produto.nome, produto.estoque, linha["quantidade"]
+                )
+
+            travados.append((produto, linha))
+
+        # --- Fase 2: gravar -------------------------------------------
+        pedido = Pedido(
+            cliente_id=cliente_id, status="CRIADO", total=Decimal("0")
+        )
+        db.session.add(pedido)
+
+        # flush envia o INSERT e recebe o id gerado pela sequence, sem
+        # encerrar a transacao. O commit continua sendo o unico ponto em
+        # que algo se torna definitivo.
+        db.session.flush()
+
+        total = Decimal("0")
+        for produto, linha in travados:
+            db.session.add(
+                ItemPedido(
+                    pedido_id=pedido.id,
+                    produto_id=produto.id,
+                    quantidade=linha["quantidade"],
+                    # Congelado aqui, e so aqui. Se o preco deste cafe mudar
+                    # amanha, este pedido mantem o valor de hoje.
+                    preco_unitario=produto.preco,
+                    moagem=linha["moagem"],
+                )
+            )
+            produto.estoque -= linha["quantidade"]
+            total += produto.preco * linha["quantidade"]
+
+        pedido.total = total
+        db.session.commit()
+        return pedido
+
+    except Exception:
+        # Vale para o erro de negocio e para o inesperado: o banco nao fica
+        # com pedido pela metade em nenhum dos dois casos.
+        db.session.rollback()
+        raise
+
+
 def formatar_brl(valor) -> str:
     """Formata no padrao brasileiro: R$ 1.234,56.
 
@@ -587,6 +709,53 @@ def registrar_rotas(app: Flask) -> None:
         gravar_carrinho([])
         flash("Carrinho esvaziado.", "sucesso")
         return redirect(url_for("carrinho"))
+
+    # -----------------------------------------------------------------
+    # RF05 — Checkout transacional
+    # -----------------------------------------------------------------
+    @app.route("/checkout", methods=["GET", "POST"])
+    @login_obrigatorio
+    def checkout():
+        linhas, total = carrinho_detalhado()
+
+        if not linhas:
+            flash("Seu carrinho esta vazio.", "erro")
+            return redirect(url_for("catalogo"))
+
+        if request.method == "GET":
+            return render_template(
+                "checkout.html", linhas=linhas, total=total
+            )
+
+        try:
+            pedido = finalizar_pedido(session["cliente_id"], ler_carrinho())
+        except ErroCheckout as erro:
+            # A transacao ja foi desfeita dentro de finalizar_pedido. O
+            # carrinho continua intacto de proposito: o cliente corrige a
+            # quantidade e tenta de novo sem remontar a compra.
+            flash(str(erro), "erro")
+            return redirect(url_for("carrinho"))
+
+        gravar_carrinho([])
+        flash(f"Pedido #{pedido.id} confirmado.", "sucesso")
+        return redirect(url_for("meus_pedidos"))
+
+    # -----------------------------------------------------------------
+    # RF06 — Meus pedidos
+    # -----------------------------------------------------------------
+    @app.route("/meus-pedidos")
+    @login_obrigatorio
+    def meus_pedidos():
+        # O filtro por cliente_id e a consulta que justifica o
+        # idx_pedidos_cliente. Nunca listar sem ele: sem o WHERE, um
+        # cliente veria o historico de todos os outros.
+        pedidos = db.session.scalars(
+            db.select(Pedido)
+            .where(Pedido.cliente_id == session["cliente_id"])
+            .order_by(Pedido.criado_em.desc())
+        ).all()
+
+        return render_template("meus_pedidos.html", pedidos=pedidos)
 
 
 app = criar_app()
