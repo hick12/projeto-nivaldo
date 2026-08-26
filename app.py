@@ -14,12 +14,23 @@ constraints ficam visiveis e auditaveis.
 
 import os
 from decimal import Decimal
+from functools import wraps
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, render_template, request
+from flask import (
+    Flask,
+    flash,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import CheckConstraint, UniqueConstraint, func
+from sqlalchemy.exc import IntegrityError
+from werkzeug.security import check_password_hash, generate_password_hash
 
 load_dotenv()
 
@@ -279,6 +290,34 @@ def registrar_comandos(app: Flask) -> None:
 # Apresentacao
 # =====================================================================
 
+MOAGENS_VALIDAS = ("GRAO", "MEDIA", "FINA")
+
+
+def login_obrigatorio(rota):
+    """Protege rotas que exigem cliente autenticado.
+
+    Guarda a URL pedida para devolver o cliente exatamente onde ele estava
+    depois do login — quem clica em "finalizar compra" sem estar logado
+    volta para o checkout, nao para a home.
+    """
+
+    @wraps(rota)
+    def envelope(*args, **kwargs):
+        if not session.get("cliente_id"):
+            flash("Entre na sua conta para continuar.", "erro")
+            return redirect(url_for("login", proximo=request.path))
+        return rota(*args, **kwargs)
+
+    return envelope
+
+
+def cliente_atual() -> "Cliente | None":
+    cliente_id = session.get("cliente_id")
+    if not cliente_id:
+        return None
+    return db.session.get(Cliente, cliente_id)
+
+
 def formatar_brl(valor) -> str:
     """Formata no padrao brasileiro: R$ 1.234,56.
 
@@ -298,6 +337,11 @@ def formatar_brl(valor) -> str:
 
 def registrar_rotas(app: Flask) -> None:
     app.jinja_env.filters["brl"] = formatar_brl
+
+    @app.context_processor
+    def injetar_contexto():
+        """Deixa o cliente logado disponivel em todos os templates."""
+        return {"cliente_logado": cliente_atual()}
 
     # -----------------------------------------------------------------
     # RF01 — Catalogo
@@ -336,6 +380,82 @@ def registrar_rotas(app: Flask) -> None:
             Produto, produto_id, description="Cafe nao encontrado."
         )
         return render_template("produto.html", produto=item)
+
+    # -----------------------------------------------------------------
+    # RF04 — Cadastro, login e sessao
+    # -----------------------------------------------------------------
+    @app.route("/cadastro", methods=["GET", "POST"])
+    def cadastro():
+        if request.method == "GET":
+            return render_template("cadastro.html")
+
+        nome = (request.form.get("nome") or "").strip()
+        email = (request.form.get("email") or "").strip().lower()
+        senha = request.form.get("senha") or ""
+
+        if not nome or not email or not senha:
+            flash("Preencha nome, e-mail e senha.", "erro")
+            return render_template("cadastro.html", nome=nome, email=email)
+
+        if len(senha) < 8:
+            flash("A senha precisa ter pelo menos 8 caracteres.", "erro")
+            return render_template("cadastro.html", nome=nome, email=email)
+
+        cliente = Cliente(
+            nome=nome,
+            email=email,
+            # A senha em texto puro morre aqui: so o hash segue para o banco.
+            senha_hash=generate_password_hash(senha),
+        )
+
+        try:
+            db.session.add(cliente)
+            db.session.commit()
+        except IntegrityError:
+            # O UNIQUE de clientes.email e quem decide, nao um SELECT previo.
+            # Consultar antes de inserir abriria uma janela de corrida entre
+            # a checagem e o INSERT; deixar o banco recusar elimina a janela.
+            db.session.rollback()
+            flash("Este e-mail ja tem cadastro. Tente entrar.", "erro")
+            return render_template("cadastro.html", nome=nome, email=email)
+
+        session["cliente_id"] = cliente.id
+        flash(f"Bem-vindo, {cliente.nome}.", "sucesso")
+        return redirect(url_for("catalogo"))
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        if request.method == "GET":
+            return render_template("login.html")
+
+        email = (request.form.get("email") or "").strip().lower()
+        senha = request.form.get("senha") or ""
+
+        cliente = db.session.scalar(
+            db.select(Cliente).where(Cliente.email == email)
+        )
+
+        # Mensagem unica para e-mail inexistente e senha errada: dizer qual
+        # dos dois falhou entregaria a um atacante a lista de quem tem conta.
+        if not cliente or not check_password_hash(cliente.senha_hash, senha):
+            flash("E-mail ou senha invalidos.", "erro")
+            return render_template("login.html", email=email)
+
+        session["cliente_id"] = cliente.id
+        flash(f"Bem-vindo de volta, {cliente.nome}.", "sucesso")
+
+        # Só aceita destino interno: `proximo` vem da URL e um atacante
+        # poderia mandar para fora do site (open redirect).
+        proximo = request.args.get("proximo", "")
+        if proximo.startswith("/") and not proximo.startswith("//"):
+            return redirect(proximo)
+        return redirect(url_for("catalogo"))
+
+    @app.route("/sair")
+    def sair():
+        session.clear()
+        flash("Voce saiu da sua conta.", "sucesso")
+        return redirect(url_for("catalogo"))
 
 
 app = criar_app()

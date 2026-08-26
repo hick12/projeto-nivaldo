@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block titulo %}Criar conta — Torra &amp; Terra{% endblock %}
+
+{% block conteudo %}
+
+<form class="formulario-estreito" method="post" action="{{ url_for('cadastro') }}">
+  <h1>Criar conta</h1>
+
+  <div class="campo">
+    <label for="nome">Nome</label>
+    <input id="nome" name="nome" type="text" value="{{ nome or '' }}"
+           autocomplete="name" required>
+  </div>
+
+  <div class="campo">
+    <label for="email">E-mail</label>
+    <input id="email" name="email" type="email" value="{{ email or '' }}"
+           autocomplete="email" required>
+  </div>
+
+  <div class="campo">
+    <label for="senha">Senha</label>
+    <input id="senha" name="senha" type="password"
+           autocomplete="new-password" minlength="8" required>
+    <p class="campo-ajuda">Pelo menos 8 caracteres.</p>
+  </div>
+
+  <button class="botao botao-primario" type="submit">Criar conta</button>
+
+  <p class="alternativa">
+    Já tem conta? <a href="{{ url_for('login') }}">Entrar</a>
+  </p>
+</form>
+
+{% endblock %}
