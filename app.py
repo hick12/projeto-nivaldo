@@ -318,6 +318,57 @@ def cliente_atual() -> "Cliente | None":
     return db.session.get(Cliente, cliente_id)
 
 
+# ---------------------------------------------------------------------
+# Carrinho
+#
+# Mora na sessao, nao no banco. O carrinho e PROCESSO, nao entidade: existe
+# so enquanto a compra nao fecha e nao tem valor historico. Ele vira
+# entidade — pedidos + itens_pedido — no instante do checkout.
+#
+# Formato na sessao:
+#     [{"produto_id": 3, "quantidade": 2, "moagem": "FINA"}, ...]
+#
+# Guardamos apenas o id, nunca o preco: o preco e lido do banco a cada
+# exibicao e so e congelado no fechamento do pedido. Confiar num preco
+# vindo da sessao deixaria o cliente alterar o valor pelo cookie.
+# ---------------------------------------------------------------------
+
+def ler_carrinho() -> list[dict]:
+    return session.get("carrinho", [])
+
+
+def gravar_carrinho(linhas: list[dict]) -> None:
+    session["carrinho"] = linhas
+    session.modified = True
+
+
+def carrinho_detalhado() -> tuple[list[dict], Decimal]:
+    """Junta as linhas da sessao com os produtos do banco.
+
+    Linhas cujo produto sumiu do catalogo sao descartadas silenciosamente
+    aqui — o checkout trata esse caso com mensagem explicita.
+    """
+    linhas, total = [], Decimal("0")
+
+    for linha in ler_carrinho():
+        produto = db.session.get(Produto, linha["produto_id"])
+        if produto is None:
+            continue
+
+        subtotal = produto.preco * linha["quantidade"]
+        total += subtotal
+        linhas.append(
+            {
+                "produto": produto,
+                "quantidade": linha["quantidade"],
+                "moagem": linha["moagem"],
+                "subtotal": subtotal,
+            }
+        )
+
+    return linhas, total
+
+
 def formatar_brl(valor) -> str:
     """Formata no padrao brasileiro: R$ 1.234,56.
 
@@ -340,8 +391,13 @@ def registrar_rotas(app: Flask) -> None:
 
     @app.context_processor
     def injetar_contexto():
-        """Deixa o cliente logado disponivel em todos os templates."""
-        return {"cliente_logado": cliente_atual()}
+        """Cliente logado e contador do carrinho, disponiveis em todo template."""
+        return {
+            "cliente_logado": cliente_atual(),
+            "itens_no_carrinho": sum(
+                linha["quantidade"] for linha in ler_carrinho()
+            ),
+        }
 
     # -----------------------------------------------------------------
     # RF01 — Catalogo
@@ -456,6 +512,81 @@ def registrar_rotas(app: Flask) -> None:
         session.clear()
         flash("Voce saiu da sua conta.", "sucesso")
         return redirect(url_for("catalogo"))
+
+    # -----------------------------------------------------------------
+    # RF03 — Carrinho
+    # -----------------------------------------------------------------
+    @app.route("/carrinho")
+    def carrinho():
+        linhas, total = carrinho_detalhado()
+        return render_template("carrinho.html", linhas=linhas, total=total)
+
+    @app.route("/carrinho/adicionar/<int:produto_id>", methods=["POST"])
+    def adicionar_ao_carrinho(produto_id: int):
+        produto = db.session.get(Produto, produto_id)
+        if produto is None:
+            flash("Este cafe nao esta mais disponivel.", "erro")
+            return redirect(url_for("catalogo"))
+
+        moagem = request.form.get("moagem", "")
+        if moagem not in MOAGENS_VALIDAS:
+            flash("Escolha uma moagem valida.", "erro")
+            return redirect(url_for("produto", produto_id=produto_id))
+
+        try:
+            quantidade = int(request.form.get("quantidade", 1))
+        except ValueError:
+            quantidade = 0
+
+        if quantidade < 1:
+            flash("A quantidade precisa ser pelo menos 1.", "erro")
+            return redirect(url_for("produto", produto_id=produto_id))
+
+        linhas = ler_carrinho()
+
+        # A chave e o par (produto, moagem), nao o produto sozinho: meio
+        # quilo em grao e meio quilo moido fino sao duas linhas distintas
+        # do mesmo cafe. E a mesma regra da constraint
+        # uq_itens_pedido_produto_moagem no banco.
+        for linha in linhas:
+            if linha["produto_id"] == produto_id and linha["moagem"] == moagem:
+                linha["quantidade"] += quantidade
+                break
+        else:
+            linhas.append(
+                {
+                    "produto_id": produto_id,
+                    "quantidade": quantidade,
+                    "moagem": moagem,
+                }
+            )
+
+        gravar_carrinho(linhas)
+        flash(f"{produto.nome} adicionado ao carrinho.", "sucesso")
+        return redirect(url_for("carrinho"))
+
+    @app.route("/carrinho/remover", methods=["POST"])
+    def remover_do_carrinho():
+        produto_id = request.form.get("produto_id", type=int)
+        moagem = request.form.get("moagem", "")
+
+        linhas = [
+            linha
+            for linha in ler_carrinho()
+            if not (
+                linha["produto_id"] == produto_id and linha["moagem"] == moagem
+            )
+        ]
+
+        gravar_carrinho(linhas)
+        flash("Item removido do carrinho.", "sucesso")
+        return redirect(url_for("carrinho"))
+
+    @app.route("/carrinho/limpar", methods=["POST"])
+    def limpar_carrinho():
+        gravar_carrinho([])
+        flash("Carrinho esvaziado.", "sucesso")
+        return redirect(url_for("carrinho"))
 
 
 app = criar_app()

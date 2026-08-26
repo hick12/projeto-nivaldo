@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block titulo %}Carrinho — Torra &amp; Terra{% endblock %}
+
+{% block conteudo %}
+
+<h1 class="titulo-secao">Seu carrinho</h1>
+
+{% if linhas %}
+
+  <ul class="linhas">
+    {% for linha in linhas %}
+      <li class="linha">
+        <div>
+          <p class="linha-nome">
+            <a href="{{ url_for('produto', produto_id=linha.produto.id) }}">{{ linha.produto.nome }}</a>
+          </p>
+          <p class="linha-detalhe">
+            Moagem {{ linha.moagem|lower }} · {{ linha.quantidade }} × {{ linha.produto.preco|brl }}
+          </p>
+
+          {% if linha.quantidade > linha.produto.estoque %}
+            <p class="estoque-baixo">
+              Restam apenas {{ linha.produto.estoque }} unidades deste café.
+            </p>
+          {% endif %}
+        </div>
+
+        <div class="linha-valores">
+          <p class="preco">{{ linha.subtotal|brl }}</p>
+
+          <form method="post" action="{{ url_for('remover_do_carrinho') }}">
+            <input type="hidden" name="produto_id" value="{{ linha.produto.id }}">
+            <input type="hidden" name="moagem" value="{{ linha.moagem }}">
+            <button class="botao-texto" type="submit">Remover</button>
+          </form>
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+
+  <div class="resumo">
+    <p class="resumo-rotulo">Total</p>
+    <p class="resumo-total">{{ total|brl }}</p>
+  </div>
+
+  <div class="acoes">
+    <a class="botao botao-secundario" href="{{ url_for('catalogo') }}">
+      Continuar comprando
+    </a>
+
+    <form method="post" action="{{ url_for('limpar_carrinho') }}">
+      <button class="botao-texto" type="submit">Esvaziar carrinho</button>
+    </form>
+  </div>
+
+{% else %}
+
+  <p class="vazio">Seu carrinho está vazio.</p>
+
+  <div class="acoes">
+    <a class="botao botao-primario" href="{{ url_for('catalogo') }}">
+      Ver o catálogo
+    </a>
+  </div>
+
+{% endif %}
+
+{% endblock %}

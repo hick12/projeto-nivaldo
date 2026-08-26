@@ -24,6 +24,10 @@
     <nav class="navegacao" aria-label="Navegação principal">
       <a href="{{ url_for('catalogo') }}">Catálogo</a>
 
+      <a href="{{ url_for('carrinho') }}">
+        Carrinho{% if itens_no_carrinho %} <span class="contador">{{ itens_no_carrinho }}</span>{% endif %}
+      </a>
+
       {% if cliente_logado %}
         <a href="{{ url_for('sair') }}">Sair</a>
       {% else %}

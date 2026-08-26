@@ -63,7 +63,8 @@
         <p class="estoque-baixo">Últimas {{ produto.estoque }} unidades</p>
       {% endif %}
 
-      <form class="formulario" method="post" action="#">
+      <form class="formulario" method="post"
+            action="{{ url_for('adicionar_ao_carrinho', produto_id=produto.id) }}">
 
         <div class="campo">
           <label for="moagem">Moagem</label>
