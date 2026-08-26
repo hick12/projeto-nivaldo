@@ -74,15 +74,33 @@ Dois pontos que valem mencionar sem ser perguntado:
 `UNIQUE`. Por isso `idx_produtos_categoria` e `idx_pedidos_cliente` precisam
 ser criados à mão.
 
-**Honestidade sobre o `EXPLAIN`:** com 12 cafés o planejador escolhe `Seq
-Scan` mesmo com o índice existindo, porque ler a tabela inteira é mais barato
-quando ela cabe numa página. Isso não invalida o índice — é a decisão certa
-para o volume atual, e é o próprio planejador provando que sabe o que faz.
-A seção 4.5 de `SQL/consultas.sql` traz um gerador de 200 mil linhas para
-mostrar o `Index Scan` aparecer.
+**O que o `EXPLAIN` mostrou de verdade** (medido em produção, ver
+`docs/evidencias.md` seção 5) — e o resultado é melhor do que se esperaria:
 
-Dizer isso antes de o professor perguntar vale mais do que fingir que o
-índice mudou o plano com 12 registros.
+| Consulta | Plano escolhido |
+|---|---|
+| `WHERE categoria_id = 4` | **Index Scan** usando `idx_produtos_categoria` |
+| `WHERE cliente_id = 2` | **Bitmap Index Scan** usando `idx_pedidos_cliente` |
+| `ORDER BY nome`, sem filtro | **Seq Scan** + Sort |
+
+A explicação está na **seletividade**, e é o que o professor vai querer ouvir:
+
+- As duas primeiras têm `WHERE` seletivo — pegam 3 linhas de 12, e 1 pedido
+  de 1. Compensa consultar o índice e buscar só as linhas necessárias.
+- A terceira não tem `WHERE`: precisa de **todas** as linhas. Usar o índice
+  significaria ler o índice inteiro *e depois* a tabela inteira — mais
+  trabalho, não menos. O planejador varre e ordena em memória (`quicksort`,
+  27 kB), e essa é a decisão correta.
+
+Então o `idx_produtos_nome` não está sendo desperdiçado: ele passa a compensar
+quando a tabela crescer a ponto de o `Sort` não caber em memória. A seção 4.5
+de `SQL/consultas.sql` traz um gerador de 200 mil linhas para demonstrar a
+virada.
+
+**A lição para a defesa:** o índice existir não obriga o planejador a usá-lo.
+Ele decide por custo estimado. Saber explicar *por que* ele escolheu Seq Scan
+num caso e Index Scan no outro vale mais do que ter os três planos usando
+índice.
 
 ---
 

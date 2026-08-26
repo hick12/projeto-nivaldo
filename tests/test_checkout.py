@@ -15,7 +15,7 @@ o congelamento do preco_unitario.
 from decimal import Decimal
 
 import pytest
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 from werkzeug.security import check_password_hash
 
 from app import (
@@ -176,6 +176,13 @@ def test_pontuacao_sca_fora_da_faixa_e_recusada(catalogo):
 
 
 def test_moagem_invalida_e_recusada_pelo_banco(cliente, catalogo):
+    """A moagem so aceita GRAO, MEDIA ou FINA.
+
+    O valor de teste precisa CABER em VARCHAR(6). Com uma palavra maior o
+    banco recusa por tamanho (StringDataRightTruncation) antes de avaliar o
+    CHECK — o dado seria barrado do mesmo jeito, mas por outra regra, e o
+    teste nao provaria o que se propoe.
+    """
     pedido = Pedido(cliente_id=cliente.id, status="CRIADO", total=Decimal("0"))
     db.session.add(pedido)
     db.session.flush()
@@ -186,7 +193,7 @@ def test_moagem_invalida_e_recusada_pelo_banco(cliente, catalogo):
             produto_id=catalogo["farto"].id,
             quantidade=1,
             preco_unitario=Decimal("89.00"),
-            moagem="EXTRAFINA",   # nao existe
+            moagem="MOIDA",   # cabe em VARCHAR(6), mas nao esta no dominio
         )
     )
 
@@ -194,6 +201,28 @@ def test_moagem_invalida_e_recusada_pelo_banco(cliente, catalogo):
         db.session.commit()
 
     assert "ck_itens_moagem" in str(erro.value)
+    db.session.rollback()
+
+
+def test_moagem_longa_demais_e_recusada_pelo_tamanho(cliente, catalogo):
+    """A outra defesa da mesma coluna: VARCHAR(6) barra por tamanho."""
+    pedido = Pedido(cliente_id=cliente.id, status="CRIADO", total=Decimal("0"))
+    db.session.add(pedido)
+    db.session.flush()
+
+    db.session.add(
+        ItemPedido(
+            pedido_id=pedido.id,
+            produto_id=catalogo["farto"].id,
+            quantidade=1,
+            preco_unitario=Decimal("89.00"),
+            moagem="EXTRAFINA",
+        )
+    )
+
+    with pytest.raises(DataError):
+        db.session.commit()
+
     db.session.rollback()
 
 

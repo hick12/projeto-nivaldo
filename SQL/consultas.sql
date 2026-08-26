@@ -195,11 +195,19 @@ WHERE i.id IS NULL;
 --   3. rode os mesmos EXPLAIN                             -> Seq Scan
 --   4. recrie: psql -f SQL/schema.sql  (ou so os CREATE INDEX)
 --
--- Aviso honesto para a defesa: com 12 cafes o planejador vai preferir
--- Seq Scan mesmo COM indice — ler a tabela inteira e mais barato do que
--- consultar o indice quando a tabela cabe em uma pagina. Isso nao invalida
--- o indice: e a resposta certa para o volume atual. Para ver o Index Scan
--- aparecer, use o gerador de carga da secao 4.5.
+-- O que foi medido em producao com 12 cafes (docs/evidencias.md secao 5):
+--
+--   WHERE categoria_id = 4    -> Index Scan        (usa idx_produtos_categoria)
+--   WHERE cliente_id = 2      -> Bitmap Index Scan (usa idx_pedidos_cliente)
+--   ORDER BY nome, sem WHERE  -> Seq Scan + Sort
+--
+-- A diferenca e a SELETIVIDADE. As duas primeiras filtram poucas linhas de
+-- muitas: compensa consultar o indice. A terceira precisa de TODAS as linhas
+-- — usar o indice seria ler o indice inteiro e depois a tabela inteira, mais
+-- trabalho e nao menos. O planejador esta certo nos tres casos.
+--
+-- O idx_produtos_nome passa a compensar quando o Sort nao couber mais em
+-- memoria. Use o gerador da secao 4.5 para demonstrar a virada.
 -- =====================================================================
 
 -- 4.1 idx_produtos_nome — a ordenacao do catalogo, a consulta mais

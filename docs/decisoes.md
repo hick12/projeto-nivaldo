@@ -103,6 +103,36 @@ aplicação — não pode alterar o schema nem tocar em outros bancos.
 
 Ver `SQL/usuario_app.sql`.
 
+**Correção feita durante o deploy.** Este documento afirmava antes que "no
+Railway isso é resolvido pelo provedor". **Estava errado.** A conferência em
+produção mostrou:
+
+```
+usuario=postgres  superuser=True  banco=railway
+```
+
+O Railway entrega na `DATABASE_URL` o usuário `postgres`, que é superusuário
+dentro daquele container. O isolamento do provedor é no nível do **container**,
+não no nível do **papel** — e o RNF04 fala de papel.
+
+Criamos então o `torra_app` também no banco de produção, com os mesmos
+privilégios restritos, e apontamos a `DATABASE_URL` do serviço para ele. A
+verificação depois da troca:
+
+```
+conectou como torra_app | superuser=False
+SELECT ok -> 12 cafés
+INSERT e UPDATE ok (sequence acessível)
+DROP TABLE negado, como esperado: InsufficientPrivilege
+```
+
+**Efeito colateral aceito:** a `DATABASE_URL` deixou de ser a *reference
+variable* `${{Postgres.DATABASE_URL}}` e virou uma URL explícita. Se o Railway
+trocar o hostname interno do Postgres, a referência se atualizaria sozinha e a
+URL explícita não. A senha do `torra_app` é nossa e não rotaciona, e
+`postgres.railway.internal` é estável — mas é um ponto de manutenção que antes
+não existia.
+
 ---
 
 ## D07 — SERIAL em vez de IDENTITY
