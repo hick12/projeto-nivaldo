@@ -1,0 +1,23 @@
+# Segredos — o motivo principal deste arquivo existir
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# pytest
+.pytest_cache/
+.coverage
+
+# Backups locais do banco
+*.sql.bak
+backup*.sql
+
+# Editores e SO
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
