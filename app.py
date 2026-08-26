@@ -17,7 +17,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, render_template, request
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import CheckConstraint, UniqueConstraint, func
 
@@ -276,11 +276,66 @@ def registrar_comandos(app: Flask) -> None:
 
 
 # =====================================================================
+# Apresentacao
+# =====================================================================
+
+def formatar_brl(valor) -> str:
+    """Formata no padrao brasileiro: R$ 1.234,56.
+
+    A troca dupla existe porque o Python formata no padrao americano
+    (1,234.56) e nao ha locale pt-BR garantido no container do deploy —
+    depender de `locale.setlocale` quebraria em producao.
+    """
+    if valor is None:
+        return "R$ 0,00"
+    inteiro = f"{Decimal(valor):,.2f}"
+    return "R$ " + inteiro.replace(",", "_").replace(".", ",").replace("_", ".")
+
+
+# =====================================================================
 # Rotas
 # =====================================================================
 
 def registrar_rotas(app: Flask) -> None:
-    pass
+    app.jinja_env.filters["brl"] = formatar_brl
+
+    # -----------------------------------------------------------------
+    # RF01 — Catalogo
+    # -----------------------------------------------------------------
+    @app.route("/")
+    def catalogo():
+        categorias = db.session.scalars(
+            db.select(Categoria).order_by(Categoria.nome)
+        ).all()
+
+        consulta = db.select(Produto).order_by(Produto.nome)
+
+        # O filtro por regiao e a consulta que justifica o
+        # idx_produtos_categoria: sem indice, seq scan em produtos inteiro.
+        categoria_id = request.args.get("categoria", type=int)
+        if categoria_id:
+            consulta = consulta.where(Produto.categoria_id == categoria_id)
+
+        produtos = db.session.scalars(consulta).all()
+
+        return render_template(
+            "catalogo.html",
+            produtos=produtos,
+            categorias=categorias,
+            categoria_ativa=categoria_id,
+        )
+
+    # -----------------------------------------------------------------
+    # RF02 — Detalhe do produto
+    # -----------------------------------------------------------------
+    @app.route("/produto/<int:produto_id>")
+    def produto(produto_id: int):
+        # get_or_404 devolve 404 limpo em vez de estourar AttributeError
+        # numa pagina de erro 500 — criterio de aceite do RF02.
+        item = db.get_or_404(
+            Produto, produto_id, description="Cafe nao encontrado."
+        )
+        return render_template("produto.html", produto=item)
 
 
 app = criar_app()

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Torra &amp; Terra{% endblock %}</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Instrument+Serif&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<a class="pular-para-conteudo" href="#conteudo">Pular para o conteúdo</a>
+
+<header class="cabecalho">
+  <div class="container cabecalho-interno">
+    <a class="marca" href="{{ url_for('catalogo') }}">
+      Torra <span class="marca-e">&amp;</span> Terra
+    </a>
+
+    <nav class="navegacao" aria-label="Navegação principal">
+      <a href="{{ url_for('catalogo') }}">Catálogo</a>
+    </nav>
+  </div>
+</header>
+
+<main id="conteudo" class="container">
+  {% with mensagens = get_flashed_messages(with_categories=true) %}
+    {% if mensagens %}
+      <div class="avisos">
+        {% for categoria, texto in mensagens %}
+          <p class="aviso aviso-{{ categoria }}" role="status">{{ texto }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {% block conteudo %}{% endblock %}
+</main>
+
+<footer class="rodape">
+  <div class="container">
+    <p>
+      Torra <span class="marca-e">&amp;</span> Terra — cafés de origem única.
+    </p>
+    <p class="rodape-nota">
+      Projeto acadêmico · FACAMP · Tratamento e Armazenamento da Informação
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>

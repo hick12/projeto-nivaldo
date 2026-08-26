@@ -1,0 +1,8 @@
+# O Railway roda Linux. Procfile com CRLF quebra o boot do gunicorn.
+* text=auto eol=lf
+Procfile text eol=lf
+*.py      text eol=lf
+*.sql     text eol=lf
+*.html    text eol=lf
+*.css     text eol=lf
+*.md      text eol=lf

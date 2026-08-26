@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block titulo %}Catálogo — Torra &amp; Terra{% endblock %}
+
+{% block conteudo %}
+
+<section class="abertura">
+  <h1>Cafés de origem única</h1>
+  <p class="abertura-texto">
+    Doze lotes de quatro regiões produtoras brasileiras. Cada café é torrado
+    para o seu perfil e moído no ponto que você escolher.
+  </p>
+</section>
+
+<nav class="filtros" aria-label="Filtro por região">
+  <a class="filtro {% if not categoria_ativa %}filtro-ativo{% endif %}"
+     href="{{ url_for('catalogo') }}">Todas as regiões</a>
+
+  {% for categoria in categorias %}
+    <a class="filtro {% if categoria_ativa == categoria.id %}filtro-ativo{% endif %}"
+       href="{{ url_for('catalogo', categoria=categoria.id) }}">{{ categoria.nome }}</a>
+  {% endfor %}
+</nav>
+
+{% if produtos %}
+  <ul class="grade">
+    {% for produto in produtos %}
+      <li class="cartao">
+        <p class="rotulo">
+          {{ produto.categoria.nome }} · Torra {{ produto.torra|lower }}
+          {%- if produto.pontuacao_sca %} · SCA {{ produto.pontuacao_sca }}{% endif %}
+        </p>
+
+        <h2 class="cartao-titulo">
+          <a href="{{ url_for('produto', produto_id=produto.id) }}">{{ produto.nome }}</a>
+        </h2>
+
+        {% if produto.nota_sensorial %}
+          <p class="nota-sensorial">{{ produto.nota_sensorial }}</p>
+        {% endif %}
+
+        <div class="cartao-rodape">
+          <p class="preco">{{ produto.preco|brl }}<span class="preco-peso"> / {{ produto.peso_g }} g</span></p>
+
+          {% if produto.estoque == 0 %}
+            <p class="esgotado">Esgotado</p>
+          {% elif produto.estoque <= 5 %}
+            <p class="estoque-baixo">Últimas {{ produto.estoque }} un.</p>
+          {% endif %}
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="vazio">Nenhum café encontrado nesta região.</p>
+{% endif %}
+
+{% endblock %}

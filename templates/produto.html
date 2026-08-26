@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block titulo %}{{ produto.nome }} — Torra &amp; Terra{% endblock %}
+
+{% block conteudo %}
+
+<p class="migalha">
+  <a href="{{ url_for('catalogo') }}">Catálogo</a>
+  <span aria-hidden="true">/</span>
+  <a href="{{ url_for('catalogo', categoria=produto.categoria_id) }}">{{ produto.categoria.nome }}</a>
+</p>
+
+<article class="produto">
+
+  <div class="produto-principal">
+    <p class="rotulo">{{ produto.categoria.nome }} · {{ produto.categoria.regiao }}</p>
+
+    <h1 class="produto-titulo">{{ produto.nome }}</h1>
+
+    {% if produto.nota_sensorial %}
+      <p class="produto-nota">{{ produto.nota_sensorial }}</p>
+    {% endif %}
+
+    {% if produto.descricao %}
+      <p class="produto-descricao">{{ produto.descricao }}</p>
+    {% endif %}
+
+    <dl class="ficha">
+      <div class="ficha-linha">
+        <dt>Torra</dt>
+        <dd>{{ produto.torra|capitalize }}</dd>
+      </div>
+      {% if produto.pontuacao_sca %}
+        <div class="ficha-linha">
+          <dt>Pontuação SCA</dt>
+          <dd>{{ produto.pontuacao_sca }}</dd>
+        </div>
+      {% endif %}
+      <div class="ficha-linha">
+        <dt>Peso</dt>
+        <dd>{{ produto.peso_g }} g</dd>
+      </div>
+      <div class="ficha-linha">
+        <dt>Região</dt>
+        <dd>{{ produto.categoria.regiao }}</dd>
+      </div>
+    </dl>
+
+    {% if produto.categoria.descricao %}
+      <p class="regiao-descricao">{{ produto.categoria.descricao }}</p>
+    {% endif %}
+  </div>
+
+  <aside class="compra">
+    <p class="preco preco-grande">
+      {{ produto.preco|brl }}<span class="preco-peso"> / {{ produto.peso_g }} g</span>
+    </p>
+
+    {% if produto.estoque == 0 %}
+      <p class="esgotado">Esgotado no momento</p>
+    {% else %}
+      {% if produto.estoque <= 5 %}
+        <p class="estoque-baixo">Últimas {{ produto.estoque }} unidades</p>
+      {% endif %}
+
+      <form class="formulario" method="post" action="#">
+
+        <div class="campo">
+          <label for="moagem">Moagem</label>
+          <select id="moagem" name="moagem" required>
+            <option value="GRAO">Em grão — você mói na hora</option>
+            <option value="MEDIA" selected>Média — coador e prensa</option>
+            <option value="FINA">Fina — espresso e moka</option>
+          </select>
+          <p class="campo-ajuda">
+            A moagem é escolhida na compra, não no cadastro do café.
+          </p>
+        </div>
+
+        <div class="campo">
+          <label for="quantidade">Quantidade</label>
+          <input id="quantidade" name="quantidade" type="number"
+                 value="1" min="1" max="{{ produto.estoque }}" required>
+        </div>
+
+        <button class="botao botao-primario" type="submit">
+          Adicionar ao carrinho
+        </button>
+      </form>
+    {% endif %}
+  </aside>
+
+</article>
+
+{% endblock %}
