@@ -5,7 +5,7 @@ Entrega 4 do slide 41. Saídas reais, coladas do terminal.
 **Ambiente:** PostgreSQL 17 gerenciado no Railway, projeto `worthy-serenity`,
 ambiente `production`.
 **URL:** https://projeto-nivaldo-production.up.railway.app
-**Domínio próprio:** https://nivaldo.felipefurlan.com.br *(aguardando DNS)*
+**Domínio próprio:** https://nivaldo.felipefurlan.com.br — no ar, HTTPS válido
 **Coletado em:** 26/08/2026
 
 ---
@@ -333,16 +333,55 @@ Procedimento no `README.md`, seção "Backup e restauração".
 - [x] **O cenário de erro funciona em produção**
 - [x] "Meus pedidos" mostra o histórico
 - [x] `git push` na `main` dispara deploy automático
-- [ ] `https://nivaldo.felipefurlan.com.br` — aguardando os registros de DNS
+- [x] **`https://nivaldo.felipefurlan.com.br` no ar, com HTTPS válido**
 
-### DNS pendente
+### 8.1 Domínio próprio
 
-Os dois registros precisam ser criados na zona de `felipefurlan.com.br`:
+A zona de `felipefurlan.com.br` é gerenciada pelo **Netlify DNS** — os
+nameservers são `dns1.p02.nsone.net` a `dns4`, infraestrutura NS1. Os dois
+registros foram criados lá:
 
 | Tipo | Nome | Valor |
 |---|---|---|
 | CNAME | `nivaldo` | `gmcessmo.up.railway.app` |
-| TXT | `_railway-verify.nivaldo` | `railway-verify=2cc89b4fecd8af80de6108950cc6dc8ef34379f7d35b8a189837e0f52912db42` |
+| TXT | `_railway-verify.nivaldo` | `railway-verify=2cc89b4f…12db42` |
 
-**Os dois são obrigatórios.** Com o CNAME resolvendo e o TXT faltando, o
-domínio responde 404 — o TXT é a verificação de propriedade.
+**Os dois são obrigatórios.** O TXT é a verificação de propriedade; sem ele o
+Railway não emite o certificado.
+
+Status final no Railway:
+
+```
+Verified: yes
+Certificate status: CERTIFICATE_STATUS_TYPE_VALID
+```
+
+### 8.2 Certificado
+
+```
+subject = CN=nivaldo.felipefurlan.com.br
+issuer  = C=US, O=Let's Encrypt, CN=YR2
+válido  = 26/08/2026 até 24/11/2026
+```
+
+Renovação automática a cada 90 dias, pelo Railway.
+
+### 8.3 Rotas na URL definitiva
+
+```
+/                HTTP 200
+/produto/11      HTTP 200
+/?categoria=4    HTTP 200
+/carrinho        HTTP 200
+/login           HTTP 200
+/cadastro        HTTP 200
+/meus-pedidos    HTTP 302   <- protegida, redireciona sem sessão
+```
+
+E o `http://` redireciona para `https://` com **HTTP 301**.
+
+> **Nota para quem testar durante a propagação:** entre "o DNS já aponta para
+> o Railway" e "o Let's Encrypt já emitiu o certificado" existe uma janela em
+> que o navegador mostra `ERR_CERT_COMMON_NAME_INVALID`. Não é erro de
+> configuração — é o Railway servindo o certificado curinga `*.up.railway.app`
+> enquanto o específico não sai. Levou cerca de 20 minutos neste caso.
