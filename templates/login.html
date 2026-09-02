@@ -6,6 +6,7 @@
 
 <form class="formulario-estreito" method="post"
       action="{{ url_for('login', proximo=request.args.get('proximo','')) }}">
+  <input type="hidden" name="_csrf" value="{{ token_csrf() }}">
   <h1>Entrar</h1>
 
   <div class="campo">

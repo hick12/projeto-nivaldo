@@ -65,6 +65,7 @@
 
       <form class="formulario" method="post"
             action="{{ url_for('adicionar_ao_carrinho', produto_id=produto.id) }}">
+        <input type="hidden" name="_csrf" value="{{ token_csrf() }}">
 
         <div class="campo">
           <label for="moagem">Moagem</label>

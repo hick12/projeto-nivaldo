@@ -30,6 +30,7 @@
           <p class="preco">{{ linha.subtotal|brl }}</p>
 
           <form method="post" action="{{ url_for('remover_do_carrinho') }}">
+            <input type="hidden" name="_csrf" value="{{ token_csrf() }}">
             <input type="hidden" name="produto_id" value="{{ linha.produto.id }}">
             <input type="hidden" name="moagem" value="{{ linha.moagem }}">
             <button class="botao-texto" type="submit">Remover</button>
@@ -53,6 +54,7 @@
     </a>
 
     <form method="post" action="{{ url_for('limpar_carrinho') }}">
+      <input type="hidden" name="_csrf" value="{{ token_csrf() }}">
       <button class="botao-texto" type="submit">Esvaziar carrinho</button>
     </form>
   </div>

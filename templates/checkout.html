@@ -34,6 +34,7 @@
 </p>
 
 <form class="formulario" method="post" action="{{ url_for('checkout') }}">
+  <input type="hidden" name="_csrf" value="{{ token_csrf() }}">
   <div class="acoes">
     <button class="botao botao-primario" type="submit">
       Confirmar pedido — {{ total|brl }}

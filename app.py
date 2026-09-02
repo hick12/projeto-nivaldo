@@ -13,6 +13,7 @@ constraints ficam visiveis e auditaveis.
 """
 
 import os
+import secrets
 from decimal import Decimal
 from functools import wraps
 from pathlib import Path
@@ -20,6 +21,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from flask import (
     Flask,
+    abort,
     flash,
     redirect,
     render_template,
@@ -76,6 +78,20 @@ def criar_app(config_teste: dict | None = None) -> Flask:
     # Sem valor padrao em producao: sessao assinada com chave conhecida e
     # sessao forjavel. O fallback so existe para desenvolvimento local.
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-inseguro-trocar")
+
+    # --- Cookie de sessao ------------------------------------------------
+    # HttpOnly: JavaScript nao le o cookie, entao um XSS nao rouba a sessao.
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+
+    # SameSite=Lax: o navegador nao envia o cookie em POST vindo de outro
+    # site. E a primeira barreira contra CSRF, antes mesmo do token.
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+    # Secure so em producao: em desenvolvimento local o Flask roda em http
+    # e um cookie Secure simplesmente nao seria enviado, quebrando o login.
+    app.config["SESSION_COOKIE_SECURE"] = (
+        os.getenv("FLASK_ENV", "development") == "production"
+    )
 
     if config_teste:
         app.config.update(config_teste)
@@ -291,6 +307,38 @@ def registrar_comandos(app: Flask) -> None:
 # =====================================================================
 
 MOAGENS_VALIDAS = ("GRAO", "MEDIA", "FINA")
+
+# Metodos que alteram estado. Sao os unicos que exigem token CSRF — um GET
+# nunca deveria mudar nada, e se mudasse o problema seria outro.
+METODOS_QUE_ESCREVEM = ("POST", "PUT", "PATCH", "DELETE")
+
+
+# ---------------------------------------------------------------------
+# Protecao contra CSRF
+#
+# Sem isto, um site malicioso que voce visitasse enquanto logado poderia
+# disparar um POST para /checkout usando o SEU cookie de sessao, e o pedido
+# sairia de verdade. O navegador anexa o cookie automaticamente; ele nao
+# sabe distinguir um formulario nosso de um formulario de outra pagina.
+#
+# A defesa e um segredo que so o nosso HTML conhece: o token vive na sessao
+# e e reenviado num campo escondido. O site atacante nao consegue ler a
+# sessao, entao nao consegue forjar o campo.
+#
+# Escrito a mao em vez de usar o Flask-WTF: sao vinte linhas, nao adiciona
+# dependencia, e e codigo que o grupo consegue explicar na defesa.
+# ---------------------------------------------------------------------
+
+def token_csrf() -> str:
+    """Devolve o token da sessao, criando na primeira vez."""
+    if "_csrf" not in session:
+        session["_csrf"] = secrets.token_urlsafe(32)
+    return session["_csrf"]
+
+
+def renovar_token_csrf() -> None:
+    """Troca o token. Chamado no login, contra fixacao de sessao."""
+    session["_csrf"] = secrets.token_urlsafe(32)
 
 
 def login_obrigatorio(rota):
@@ -511,6 +559,68 @@ def formatar_brl(valor) -> str:
 def registrar_rotas(app: Flask) -> None:
     app.jinja_env.filters["brl"] = formatar_brl
 
+    # Disponivel em todo template como {{ token_csrf() }}
+    app.jinja_env.globals["token_csrf"] = token_csrf
+
+    @app.before_request
+    def exigir_token_csrf():
+        """Barra qualquer escrita sem token valido, antes de tocar no banco."""
+        if request.method not in METODOS_QUE_ESCREVEM:
+            return
+
+        enviado = request.form.get("_csrf", "")
+        esperado = session.get("_csrf", "")
+
+        # compare_digest em vez de ==: comparacao de tempo constante, para
+        # nao vazar o token caractere a caractere pelo tempo de resposta.
+        if not esperado or not secrets.compare_digest(enviado, esperado):
+            abort(400, description="Sessão expirada. Recarregue a página e tente de novo.")
+
+    @app.after_request
+    def cabecalhos_de_seguranca(resposta):
+        """Os cabecalhos que o OWASP ZAP cobra, com o porque de cada um."""
+
+        # Impede o navegador de adivinhar o tipo do conteudo. Sem isto, um
+        # arquivo enviado como texto pode acabar executado como script.
+        resposta.headers["X-Content-Type-Options"] = "nosniff"
+
+        # Ninguem coloca a loja dentro de um iframe — defesa contra
+        # clickjacking, em que um botao invisivel e sobreposto ao real.
+        resposta.headers["X-Frame-Options"] = "DENY"
+
+        # Nao vaza a URL completa (com ids de pedido) para sites externos.
+        resposta.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        # A politica de conteudo. script-src 'none' e possivel porque a loja
+        # nao usa JavaScript nenhum — o que torna XSS praticamente inviavel.
+        # As duas excecoes sao o Google Fonts: o CSS vem de googleapis e os
+        # arquivos de fonte de gstatic.
+        resposta.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "style-src 'self' https://fonts.googleapis.com; "
+            "font-src https://fonts.gstatic.com; "
+            "img-src 'self' data:; "
+            "script-src 'none'; "
+            "form-action 'self'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'none'"
+        )
+
+        # HSTS so faz sentido sobre HTTPS. Atras do proxy do Railway o
+        # request.is_secure e falso, entao olhamos o cabecalho encaminhado.
+        encaminhado = request.headers.get("X-Forwarded-Proto", "")
+        if request.is_secure or encaminhado == "https":
+            resposta.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
+            )
+
+        # Pagina de cliente logado nao fica em cache: em computador
+        # compartilhado, o botao voltar mostraria o pedido de quem saiu.
+        if session.get("cliente_id"):
+            resposta.headers["Cache-Control"] = "no-store"
+
+        return resposta
+
     @app.context_processor
     def injetar_contexto():
         """Cliente logado e contador do carrinho, disponiveis em todo template."""
@@ -598,6 +708,9 @@ def registrar_rotas(app: Flask) -> None:
             return render_template("cadastro.html", nome=nome, email=email)
 
         session["cliente_id"] = cliente.id
+        # Token novo apos autenticar: se alguem tivesse plantado uma
+        # sessao no navegador da vitima, ela deixa de valer agora.
+        renovar_token_csrf()
         flash(f"Bem-vindo, {cliente.nome}.", "sucesso")
         return redirect(url_for("catalogo"))
 
@@ -620,6 +733,7 @@ def registrar_rotas(app: Flask) -> None:
             return render_template("login.html", email=email)
 
         session["cliente_id"] = cliente.id
+        renovar_token_csrf()
         flash(f"Bem-vindo de volta, {cliente.nome}.", "sucesso")
 
         # Só aceita destino interno: `proximo` vem da URL e um atacante

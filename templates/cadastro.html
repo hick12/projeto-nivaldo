@@ -5,6 +5,7 @@
 {% block conteudo %}
 
 <form class="formulario-estreito" method="post" action="{{ url_for('cadastro') }}">
+  <input type="hidden" name="_csrf" value="{{ token_csrf() }}">
   <h1>Criar conta</h1>
 
   <div class="campo">
