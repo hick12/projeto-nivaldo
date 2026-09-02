@@ -126,7 +126,7 @@ Geisha ao carrinho e finalizou. O `POST /checkout` redirecionou para
 `/carrinho`, e a mensagem exibida ao cliente foi:
 
 ```
-Estoque insuficiente de Chapada Geisha: voce pediu 2 e temos 1 em estoque.
+Estoque insuficiente de Chapada Geisha: você pediu 2 e temos 1 em estoque.
 ```
 
 A mensagem **nomeia o café** e informa o saldo real — critério de aceite do RF05.
@@ -332,7 +332,7 @@ Procedimento no `README.md`, seção "Backup e restauração".
 - [x] O checkout gravou o pedido #1 e reduziu o estoque
 - [x] **O cenário de erro funciona em produção**
 - [x] "Meus pedidos" mostra o histórico
-- [x] `git push` na `main` dispara deploy automático
+- [ ] **`git push` na `main` NÃO está disparando deploy automático** — ver 8.4
 - [x] **`https://nivaldo.felipefurlan.com.br` no ar, com HTTPS válido**
 
 ### 8.1 Domínio próprio
@@ -385,3 +385,41 @@ E o `http://` redireciona para `https://` com **HTTP 301**.
 > que o navegador mostra `ERR_CERT_COMMON_NAME_INVALID`. Não é erro de
 > configuração — é o Railway servindo o certificado curinga `*.up.railway.app`
 > enquanto o específico não sai. Levou cerca de 20 minutos neste caso.
+
+
+### 8.4 Deploy automático — pendência aberta
+
+**Esta era uma afirmação errada deste documento e foi corrigida.**
+
+O item estava marcado como verificado. Ele não estava. O que aconteceu: um
+`git push` e um `railway deployment redeploy` foram executados com poucos
+segundos de diferença, e o deploy que apareceu foi atribuído ao push. Era do
+redeploy.
+
+Testado de novo depois, de forma isolada: dois pushes para a `main` não
+geraram deployment nenhum. O deploy só saiu com
+`railway deployment redeploy --from-source`, que puxa o último commit à força.
+
+**Hipótese mais provável:** o repositório pertence a outra conta
+(`hick12`) e o serviço do Railway está numa conta diferente
+(`lipefurlan`). A conexão inicial funcionou — o primeiro build veio do
+GitHub — mas o *webhook* de push, que exige a Railway GitHub App instalada
+no repositório com permissão de eventos, aparentemente não está entregando.
+
+**Onde verificar:** no Railway, card do serviço → **Settings → Source**.
+Conferir a branch configurada e se existe alguma opção de auto-deploy
+desligada. No GitHub, em **Settings → GitHub Apps** do repositório, conferir
+se a Railway está instalada com acesso a `projeto-nivaldo` — isso depende do
+Henrique, que é dono do repositório.
+
+**Impacto na avaliação:** é um item do checklist do Bloco 6. Enquanto não
+for resolvido, o deploy continua funcionando, mas manualmente:
+
+```
+railway deployment redeploy --from-source
+```
+
+**Alternativa se não for resolvível:** trocar a fonte para `railway up`, que
+sobe a pasta local direto — funciona sempre, mas também não tem gatilho
+automático; ou o Felipe fazer um fork do repositório para a conta dele e
+apontar o Railway para o fork, que aí ele controla as permissões.
