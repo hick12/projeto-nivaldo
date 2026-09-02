@@ -437,7 +437,7 @@ nota(s, "Pendencia honesta, se perguntarem: o deploy automatico a cada push nao 
    ================================================================= */
 s = p.addSlide(); fundo(s, INK);
 s.addText("A lógica do projeto é cumulativa", {
-  x: M, y: 2.1, w: 8.5, h: 0.9, fontFace: SERIF, fontSize: 40, color: "FFFFFF",
+  x: M, y: 2.1, w: 9.0, h: 1.0, fontFace: SERIF, fontSize: 36, color: "FFFFFF",
   isTextBox: true, margin: 0 });
 
 s.addText([
