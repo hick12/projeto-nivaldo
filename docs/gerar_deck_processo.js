@@ -86,7 +86,97 @@ s.addText("Nenhuma etapa começou antes da anterior ser revisada. O histórico d
   isTextBox: true, margin: 0 });
 s.addNotes("Ponto importante: a ordem nao foi acidental. Requisito gera entidade, entidade gera tabela, tabela alimenta o ORM, o ORM sustenta as rotas, as rotas precisam de transacao e teste, e tudo culmina no deploy.");
 
-/* ============ 3 · REQUISITOS ============ */
+/* ============ 3 · ARQUITETURA E LINGUAGENS ============ */
+s = p.addSlide(); fundo(s, BG);
+titulo(s, "Arquitetura e linguagens",
+  "O caminho que uma requisição percorre, da barra de endereço até o disco.");
+
+// fluxo da requisicao
+const fluxo = [
+  ["Navegador", "HTML · CSS", INK],
+  ["gunicorn", "servidor WSGI", INK],
+  ["Flask", "rotas e regras", ACC],
+  ["SQLAlchemy", "ORM", ACC],
+  ["psycopg 3", "driver", INK],
+  ["PostgreSQL", "SQL", ACC],
+];
+fluxo.forEach(([t, d, cor], i) => {
+  const x = M + i * 2.02;
+  cartao(s, x, 2.0, 1.72, 1.15, cor === ACC ? ACC_SOFT : SURF);
+  s.addText(t, { x: x + 0.12, y: 2.22, w: 1.48, h: 0.32, fontFace: SANS, fontSize: 12.5,
+    bold: true, color: cor, align: "center", isTextBox: true, margin: 0 });
+  s.addText(d, { x: x + 0.12, y: 2.56, w: 1.48, h: 0.42, fontFace: SANS, fontSize: 10.5,
+    color: MUT, align: "center", isTextBox: true, margin: 0 });
+  if (i < 5) s.addText("›", { x: x + 1.74, y: 2.32, w: 0.28, h: 0.5, fontFace: SANS,
+    fontSize: 20, color: LINE, align: "center", valign: "middle", isTextBox: true, margin: 0 });
+});
+
+// camadas x linguagem
+rotulo(s, "Cada camada e a sua linguagem", M, 3.5, 6, ACC);
+const camadas = [
+  ["Interface", "HTML, CSS e Jinja2", "CSS puro, sem framework — nem Bootstrap, nem Tailwind"],
+  ["Aplicação", "Python 3.11 com Flask", "rotas, sessão e as regras de negócio"],
+  ["Persistência", "SQLAlchemy sobre psycopg 3", "os modelos espelham o schema, não o geram"],
+  ["Banco", "SQL — DDL escrito à mão", "é onde as constraints vivem e são auditáveis"],
+];
+camadas.forEach(([c, l, d], i) => {
+  const y = 3.9 + i * 0.66;
+  s.addText(c, { x: M, y, w: 1.55, h: 0.4, fontFace: SANS, fontSize: 13, bold: true,
+    color: INK, isTextBox: true, margin: 0, valign: "middle" });
+  s.addText(l, { x: M + 1.6, y, w: 3.5, h: 0.4, fontFace: MONO, fontSize: 12,
+    color: ACC, isTextBox: true, margin: 0, valign: "middle" });
+  s.addText(d, { x: M + 5.2, y, w: 6.6, h: 0.4, fontFace: SANS, fontSize: 12,
+    color: MUT, isTextBox: true, margin: 0, valign: "middle" });
+});
+
+s.addText("A stack foi fechada no início e não mudou: PostgreSQL, Python, Flask, SQLAlchemy, Jinja, psycopg 3, gunicorn, pytest e python-dotenv.", {
+  x: M, y: 6.55, w: CW, h: 0.4, fontFace: SANS, fontSize: 12.5, italic: true,
+  color: MUT, isTextBox: true, margin: 0 });
+s.addNotes("Se perguntarem por que psycopg 3 e nao 2: e a versao atual do driver, e ela exige o dialeto postgresql+psycopg:// na string de conexao — algo que teve que ser tratado no codigo porque os provedores de cloud entregam postgresql:// puro.");
+
+/* ============ 4 · FERRAMENTAS ============ */
+s = p.addSlide(); fundo(s, BG);
+titulo(s, "Ferramentas", "O que usamos em cada etapa, e para quê.");
+
+const grupos = [
+  ["Modelagem e banco", ACC, [
+    ["Mermaid", "DER versionado junto com o código"],
+    ["psql", "aplicar o schema e tirar evidências"],
+    ["EXPLAIN", "conferir se os índices são usados"],
+    ["pg_dump / pg_restore", "backup e o teste de restauração"],
+  ]],
+  ["Desenvolvimento", INK, [
+    ["VS Code", "edição e terminal"],
+    ["Git e GitHub", "25 commits, um por etapa"],
+    ["Claude Code", "par de programação"],
+    ["python-dotenv", "segredos fora do código"],
+  ]],
+  ["Qualidade e operação", OK, [
+    ["pytest", "24 testes contra Postgres real"],
+    ["OWASP ZAP", "varredura de segurança"],
+    ["Railway", "aplicação e banco em cloud"],
+    ["Playwright", "capturas automatizadas das telas"],
+  ]],
+];
+grupos.forEach(([titulo_, cor, lista], g) => {
+  const x = M + g * 4.05;
+  cartao(s, x, 2.0, 3.75, 4.05);
+  rotulo(s, titulo_, x + 0.3, 2.25, 3.2, cor);
+  lista.forEach(([f, d], i) => {
+    const y = 2.68 + i * 0.85;
+    s.addText(f, { x: x + 0.3, y, w: 3.15, h: 0.3, fontFace: MONO, fontSize: 12,
+      bold: true, color: INK, isTextBox: true, margin: 0 });
+    s.addText(d, { x: x + 0.3, y: y + 0.3, w: 3.15, h: 0.48, fontFace: SANS,
+      fontSize: 11, color: MUT, isTextBox: true, margin: 0, lineSpacingMultiple: 1.15 });
+  });
+});
+
+s.addText("O material da disciplina sugere Render e Neon para o deploy. Escolhemos o Railway porque hospeda aplicação e banco no mesmo projeto — e documentamos a escolha, com o caminho de volta caso fosse exigido.", {
+  x: M, y: 6.25, w: CW, h: 0.5, fontFace: SANS, fontSize: 12.5, italic: true,
+  color: MUT, isTextBox: true, margin: 0 });
+s.addNotes("Ferramenta e escolha, e toda escolha tem justificativa. O Railway em vez de Render+Neon esta documentado em docs/decisoes.md, decisao D01, incluindo como migrar se fosse necessario.");
+
+/* ============ 5 · REQUISITOS ============ */
 s = p.addSlide(); fundo(s, BG);
 titulo(s, "Etapa 0 — Requisitos antes de qualquer código",
   "A tentação é começar pelo schema. Começamos pelo problema.");
