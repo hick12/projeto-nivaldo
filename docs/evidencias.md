@@ -307,13 +307,100 @@ valores de exemplo.
 
 ---
 
-## 7. Backup e restauração
+## 7. Backup e restauração ✅
+
+Procedimento no `README.md`. Executado contra o banco de **produção**.
+
+### 7.1 O obstáculo do cliente desatualizado
+
+A primeira tentativa falhou, e vale registrar porque é um erro comum:
 
 ```
-PENDENTE — rodar o pg_dump e colar a comparação de contagens
+servidor Railway : PostgreSQL 18.6
+pg_dump local    : PostgreSQL 17.5
 ```
 
-Procedimento no `README.md`, seção "Backup e restauração".
+O `pg_dump` **se recusa a dumpar um servidor mais novo que ele**. Não é
+capricho: formatos internos mudam entre versões maiores e um dump feito por
+cliente antigo poderia sair incompleto.
+
+Solução: rodar o `pg_dump` **de dentro do container do Postgres**, via
+`railway ssh -s Postgres`, onde as ferramentas são exatamente da versão do
+servidor.
+
+### 7.2 Backup
+
+```
+$ pg_dump -U postgres -d railway -F c -f /tmp/torra_terra.dump
+-rw-r--r-- 1 root root 23K /tmp/torra_terra.dump
+```
+
+Formato *custom* (`-F c`): comprimido e restaurável seletivamente.
+
+### 7.3 Contagens na origem
+
+```
+ produtos | categorias | clientes | pedidos | itens
+----------+------------+----------+---------+-------
+       12 |          4 |        2 |       2 |     3
+```
+
+### 7.4 Restauração num banco novo
+
+```
+$ psql -U postgres -c 'CREATE DATABASE torra_restaurado;'
+$ pg_restore -U postgres -d torra_restaurado /tmp/torra_terra.dump
+```
+
+Restaurado num banco **separado**, de propósito: restaurar por cima do
+original destruiria justamente o que se quer proteger, e não provaria nada.
+
+### 7.5 Contagens no destino — idênticas
+
+```
+ produtos | categorias | clientes | pedidos | itens
+----------+------------+----------+---------+-------
+       12 |          4 |        2 |       2 |     3
+```
+
+### 7.6 As constraints sobreviveram?
+
+Restaurar dados sem as regras não é restaurar nada. Contagem por tipo no
+banco restaurado (`contype` do `pg_constraint`):
+
+```
+ contype | count
+---------+-------
+ c       |    11     <- CHECK
+ f       |     4     <- FOREIGN KEY
+ n       |    26     <- NOT NULL
+ p       |     5     <- PRIMARY KEY
+ u       |     3     <- UNIQUE
+```
+
+Idêntico à produção. E os 4 índices também vieram:
+
+```
+ indices_idx
+-------------
+           4
+```
+
+### 7.7 A prova final: a constraint ainda **funciona**
+
+Tentativa de inserir preço negativo no banco restaurado:
+
+```
+ERROR:  new row for relation "produtos" violates check constraint "ck_produtos_preco"
+DETAIL:  Failing row contains (13, Cafe invalido, null, -1.00, 0, 1, MEDIA, null, null, 250).
+```
+
+Não é só a estrutura que voltou — a **regra de negócio** voltou junto e está
+ativa. É isso que o slide 24 quer dizer com *"backup só é confiável quando a
+restauração também é testada"*.
+
+O banco `torra_restaurado` e o arquivo de dump foram removidos depois do
+teste, para não consumir espaço em produção.
 
 ---
 
