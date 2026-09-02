@@ -88,17 +88,17 @@ s.addNotes("Ponto importante: a ordem nao foi acidental. Requisito gera entidade
 
 /* ============ 3 · ARQUITETURA E LINGUAGENS ============ */
 s = p.addSlide(); fundo(s, BG);
-titulo(s, "Arquitetura e linguagens",
-  "O caminho que uma requisição percorre, da barra de endereço até o disco.");
+titulo(s, "Como o site funciona por dentro",
+  "O caminho que um clique percorre — do navegador do cliente até o dado guardado no banco.");
 
 // fluxo da requisicao
 const fluxo = [
-  ["Navegador", "HTML · CSS", INK],
-  ["gunicorn", "servidor WSGI", INK],
-  ["Flask", "rotas e regras", ACC],
-  ["SQLAlchemy", "ORM", ACC],
-  ["psycopg 3", "driver", INK],
-  ["PostgreSQL", "SQL", ACC],
+  ["Navegador", "o cliente clica", INK],
+  ["gunicorn", "atende o pedido", INK],
+  ["Flask", "decide o que fazer", ACC],
+  ["SQLAlchemy", "traduz para SQL", ACC],
+  ["psycopg", "fala com o banco", INK],
+  ["PostgreSQL", "guarda o dado", ACC],
 ];
 fluxo.forEach(([t, d, cor], i) => {
   const x = M + i * 2.02;
@@ -112,25 +112,27 @@ fluxo.forEach(([t, d, cor], i) => {
 });
 
 // camadas x linguagem
-rotulo(s, "Cada camada e a sua linguagem", M, 3.5, 6, ACC);
+rotulo(s, "O que é cada peça, em uma frase", M, 3.5, 6, ACC);
 const camadas = [
-  ["Interface", "HTML, CSS e Jinja2", "CSS puro, sem framework — nem Bootstrap, nem Tailwind"],
-  ["Aplicação", "Python 3.11 com Flask", "rotas, sessão e as regras de negócio"],
-  ["Persistência", "SQLAlchemy sobre psycopg 3", "os modelos espelham o schema, não o geram"],
-  ["Banco", "SQL — DDL escrito à mão", "é onde as constraints vivem e são auditáveis"],
+  ["gunicorn", "Python", "É o PORTEIRO. Escuta a internet e entrega cada acesso para o Python."],
+  ["Flask", "Python", "É o CÉREBRO. Decide o que responder, e é onde moram as regras."],
+  ["SQLAlchemy", "Python", "É o TRADUTOR. A gente escreve em Python, ele converte para SQL."],
+  ["psycopg", "Python", "É o CABO. Leva o comando até o PostgreSQL e traz a resposta."],
+  ["PostgreSQL", "SQL", "É o COFRE. Guarda tudo e recusa dado que quebre as regras."],
+  ["Jinja", "HTML", "É o MOLDE da página. Encaixa o dado do banco no HTML que o cliente vê."],
 ];
 camadas.forEach(([c, l, d], i) => {
-  const y = 3.9 + i * 0.66;
-  s.addText(c, { x: M, y, w: 1.55, h: 0.4, fontFace: SANS, fontSize: 13, bold: true,
+  const y = 3.88 + i * 0.45;
+  s.addText(c, { x: M, y, w: 1.55, h: 0.4, fontFace: SANS, fontSize: 11.5, bold: true,
     color: INK, isTextBox: true, margin: 0, valign: "middle" });
-  s.addText(l, { x: M + 1.6, y, w: 3.5, h: 0.4, fontFace: MONO, fontSize: 12,
+  s.addText(l, { x: M + 1.6, y, w: 1.3, h: 0.4, fontFace: MONO, fontSize: 10.5,
     color: ACC, isTextBox: true, margin: 0, valign: "middle" });
-  s.addText(d, { x: M + 5.2, y, w: 6.6, h: 0.4, fontFace: SANS, fontSize: 12,
+  s.addText(d, { x: M + 3.0, y, w: 8.9, h: 0.4, fontFace: SANS, fontSize: 11,
     color: MUT, isTextBox: true, margin: 0, valign: "middle" });
 });
 
-s.addText("A stack foi fechada no início e não mudou: PostgreSQL, Python, Flask, SQLAlchemy, Jinja, psycopg 3, gunicorn, pytest e python-dotenv.", {
-  x: M, y: 6.55, w: CW, h: 0.4, fontFace: SANS, fontSize: 12.5, italic: true,
+s.addText("A interface é HTML e CSS escritos à mão — sem Bootstrap, sem Tailwind, sem JavaScript nenhum.", {
+  x: M, y: 6.62, w: CW, h: 0.4, fontFace: SANS, fontSize: 12.5, italic: true,
   color: MUT, isTextBox: true, margin: 0 });
 s.addNotes("Se perguntarem por que psycopg 3 e nao 2: e a versao atual do driver, e ela exige o dialeto postgresql+psycopg:// na string de conexao — algo que teve que ser tratado no codigo porque os provedores de cloud entregam postgresql:// puro.");
 
