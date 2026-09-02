@@ -670,6 +670,18 @@ def registrar_rotas(app: Flask) -> None:
         return render_template("produto.html", produto=item)
 
     # -----------------------------------------------------------------
+    # Apresentacao do trabalho
+    #
+    # Nao faz parte do e-commerce: e a apresentacao da disciplina servida
+    # pela propria aplicacao, para ter um endereco facil de compartilhar.
+    # Feita sem JavaScript, como o resto do site — a navegacao entre os
+    # slides e o proprio scroll, com scroll-snap.
+    # -----------------------------------------------------------------
+    @app.route("/apresentacao")
+    def apresentacao():
+        return render_template("apresentacao.html")
+
+    # -----------------------------------------------------------------
     # RF04 — Cadastro, login e sessao
     # -----------------------------------------------------------------
     @app.route("/cadastro", methods=["GET", "POST"])
