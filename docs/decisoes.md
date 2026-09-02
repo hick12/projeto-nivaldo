@@ -142,3 +142,41 @@ PostgreSQL 10+. Usamos `SERIAL` porque é a forma que aparece no material do
 professor (slide 21) e a que o grupo consegue explicar sem ressalvas na defesa.
 
 A diferença prática neste projeto é nula: ambos criam uma sequence.
+
+---
+
+## D08 — Flask-SQLAlchemy no `requirements.txt`
+
+**Aqui houve um descumprimento de regra, e ele precisa estar registrado.**
+
+A regra 2 do `CLAUDE.md` fecha a stack em PostgreSQL, Python, Flask,
+SQLAlchemy, Jinja, psycopg 3, gunicorn, pytest e python-dotenv, e diz:
+*"Nada além disso sem me perguntar antes."*
+
+O `requirements.txt` tem **Flask-SQLAlchemy**, que não está nessa lista. Ele
+foi adicionado sem a pergunta prévia que a regra exige.
+
+**A justificativa técnica existe** — o material do professor usa essa
+biblioteca. O slide 29 mostra exatamente esta API:
+
+```python
+db = SQLAlchemy(app)
+
+class Produto(db.Model):
+    __tablename__ = "produtos"
+```
+
+`SQLAlchemy(app)` e `db.Model` são do Flask-SQLAlchemy, não do SQLAlchemy
+puro. Seguir o slide à risca implica usá-la. Ela é uma camada fina sobre o
+SQLAlchemy: cuida do ciclo de vida da sessão dentro do contexto do Flask e
+do `db.Model` declarativo.
+
+**O que mudaria sem ela:** o projeto usaria `sessionmaker` e
+`scoped_session` montados à mão, e o código se afastaria do exemplo do
+material — ficaria mais difícil de defender na apresentação, não mais fácil.
+
+**Como reverter, se for exigido:** trocar `db = SQLAlchemy()` por um
+`registry()` do SQLAlchemy 2.0, criar a sessão por requisição num
+`teardown_appcontext`, e ajustar os cinco modelos para herdar de uma
+`DeclarativeBase`. É trabalho de uma tarde e não muda o schema, o
+`checkout` nem os testes.

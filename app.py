@@ -401,7 +401,7 @@ class EstoqueInsuficiente(ErroCheckout):
         self.disponivel = disponivel
         self.pedido = pedido
         super().__init__(
-            f"Estoque insuficiente de {nome}: voce pediu {pedido} "
+            f"Estoque insuficiente de {nome}: você pediu {pedido} "
             f"e temos {disponivel} em estoque."
         )
 
@@ -414,7 +414,7 @@ def finalizar_pedido(cliente_id: int, linhas_carrinho: list[dict]) -> Pedido:
     desfazer a transacao inteira.
     """
     if not linhas_carrinho:
-        raise CarrinhoVazio("Seu carrinho esta vazio.")
+        raise CarrinhoVazio("Seu carrinho está vazio.")
 
     try:
         # Trava sempre na mesma ordem crescente de id. Duas compras
@@ -442,7 +442,7 @@ def finalizar_pedido(cliente_id: int, linhas_carrinho: list[dict]) -> Pedido:
 
             if produto is None:
                 raise ProdutoInexistente(
-                    "Um dos cafes do seu carrinho nao esta mais disponivel. "
+                    "Um dos cafés do seu carrinho não está mais disponível. "
                     "Revise o carrinho e tente de novo."
                 )
 
@@ -555,7 +555,7 @@ def registrar_rotas(app: Flask) -> None:
         # get_or_404 devolve 404 limpo em vez de estourar AttributeError
         # numa pagina de erro 500 — criterio de aceite do RF02.
         item = db.get_or_404(
-            Produto, produto_id, description="Cafe nao encontrado."
+            Produto, produto_id, description="Café não encontrado."
         )
         return render_template("produto.html", produto=item)
 
@@ -594,7 +594,7 @@ def registrar_rotas(app: Flask) -> None:
             # Consultar antes de inserir abriria uma janela de corrida entre
             # a checagem e o INSERT; deixar o banco recusar elimina a janela.
             db.session.rollback()
-            flash("Este e-mail ja tem cadastro. Tente entrar.", "erro")
+            flash("Este e-mail já tem cadastro. Tente entrar.", "erro")
             return render_template("cadastro.html", nome=nome, email=email)
 
         session["cliente_id"] = cliente.id
@@ -616,7 +616,7 @@ def registrar_rotas(app: Flask) -> None:
         # Mensagem unica para e-mail inexistente e senha errada: dizer qual
         # dos dois falhou entregaria a um atacante a lista de quem tem conta.
         if not cliente or not check_password_hash(cliente.senha_hash, senha):
-            flash("E-mail ou senha invalidos.", "erro")
+            flash("E-mail ou senha inválidos.", "erro")
             return render_template("login.html", email=email)
 
         session["cliente_id"] = cliente.id
@@ -632,7 +632,7 @@ def registrar_rotas(app: Flask) -> None:
     @app.route("/sair")
     def sair():
         session.clear()
-        flash("Voce saiu da sua conta.", "sucesso")
+        flash("Você saiu da sua conta.", "sucesso")
         return redirect(url_for("catalogo"))
 
     # -----------------------------------------------------------------
@@ -647,12 +647,12 @@ def registrar_rotas(app: Flask) -> None:
     def adicionar_ao_carrinho(produto_id: int):
         produto = db.session.get(Produto, produto_id)
         if produto is None:
-            flash("Este cafe nao esta mais disponivel.", "erro")
+            flash("Este café não está mais disponível.", "erro")
             return redirect(url_for("catalogo"))
 
         moagem = request.form.get("moagem", "")
         if moagem not in MOAGENS_VALIDAS:
-            flash("Escolha uma moagem valida.", "erro")
+            flash("Escolha uma moagem válida.", "erro")
             return redirect(url_for("produto", produto_id=produto_id))
 
         try:
@@ -719,7 +719,7 @@ def registrar_rotas(app: Flask) -> None:
         linhas, total = carrinho_detalhado()
 
         if not linhas:
-            flash("Seu carrinho esta vazio.", "erro")
+            flash("Seu carrinho está vazio.", "erro")
             return redirect(url_for("catalogo"))
 
         if request.method == "GET":
