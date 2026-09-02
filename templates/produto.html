@@ -60,7 +60,7 @@
       <p class="esgotado">Esgotado no momento</p>
     {% else %}
       {% if produto.estoque <= 5 %}
-        <p class="estoque-baixo">Últimas {{ produto.estoque }} unidades</p>
+        <p class="estoque-baixo">{{ 'Última' if produto.estoque == 1 else 'Últimas' }} {{ produto.estoque }} unidade{{ 's' if produto.estoque > 1 }}</p>
       {% endif %}
 
       <form class="formulario" method="post"

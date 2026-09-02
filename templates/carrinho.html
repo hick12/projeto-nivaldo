@@ -21,7 +21,7 @@
 
           {% if linha.quantidade > linha.produto.estoque %}
             <p class="estoque-baixo">
-              Restam apenas {{ linha.produto.estoque }} unidades deste café.
+              Resta{{ 'm' if linha.produto.estoque > 1 }} apenas {{ linha.produto.estoque }} unidade{{ 's' if linha.produto.estoque > 1 }} deste café.
             </p>
           {% endif %}
         </div>

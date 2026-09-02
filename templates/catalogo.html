@@ -45,7 +45,7 @@
           {% if produto.estoque == 0 %}
             <p class="esgotado">Esgotado</p>
           {% elif produto.estoque <= 5 %}
-            <p class="estoque-baixo">Últimas {{ produto.estoque }} un.</p>
+            <p class="estoque-baixo">{{ 'Última' if produto.estoque == 1 else 'Últimas' }} {{ produto.estoque }} un.</p>
           {% endif %}
         </div>
       </li>
