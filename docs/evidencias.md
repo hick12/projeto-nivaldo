@@ -510,3 +510,115 @@ railway deployment redeploy --from-source
 sobe a pasta local direto — funciona sempre, mas também não tem gatilho
 automático; ou o Felipe fazer um fork do repositório para a conta dele e
 apontar o Railway para o fork, que aí ele controla as permissões.
+
+---
+
+## 9. Varredura de segurança — OWASP ZAP
+
+O ZAP foi rodado contra a aplicação publicada e apontou **11 alertas**. Oito
+eram acionáveis e foram corrigidos; três são informativos.
+
+### 9.1 Antes
+
+| Alerta | Gravidade | Situação |
+|---|---|---|
+| Ausência de tokens Anti-CSRF | Alta | corrigido |
+| Cookie sem atributo SameSite | Alta | corrigido |
+| Cookie sem flag Secure | Alta | corrigido |
+| Content Security Policy não definido | Média | corrigido |
+| Missing Anti-clickjacking Header | Média | corrigido |
+| Strict-Transport-Security não definido | Média | corrigido |
+| X-Content-Type-Options ausente | Baixa | corrigido |
+| Sub Resource Integrity ausente | Baixa | **não corrigido — ver 9.4** |
+| Re-examine Cache-control Directives | Informativo | mitigado |
+| Session Management Response Identified | Informativo | é só a detecção da sessão |
+| User Controllable HTML Element Attribute | Informativo | falso positivo |
+
+### 9.2 O achado que importava: CSRF
+
+Era o único explorável de verdade, e só porque vinha acompanhado da ausência
+de `SameSite`.
+
+**O ataque:** um cliente logado na loja visita uma página maliciosa. Essa
+página tem um formulário escondido que dispara `POST` para
+`/checkout`. O navegador **anexa o cookie de sessão automaticamente** — ele
+não sabe distinguir um formulário nosso de um de outro site. O pedido sai de
+verdade, em nome do cliente.
+
+**As duas defesas implementadas:**
+
+1. `SameSite=Lax` no cookie — o navegador se recusa a enviar o cookie num
+   `POST` originado de outro site. Barra o ataque antes de chegar à aplicação.
+2. Token CSRF — um segredo que vive na sessão e é reenviado num campo
+   escondido. O site atacante não consegue ler a sessão, logo não consegue
+   forjar o campo.
+
+A validação acontece em `before_request`, **antes de qualquer acesso ao
+banco**, e usa `secrets.compare_digest` em vez de `==` — comparação de tempo
+constante, para não vazar o token caractere a caractere pelo tempo de resposta.
+
+### 9.3 Depois — verificado na URL definitiva
+
+```
+content-security-policy: default-src 'self'; style-src 'self' https://fonts.googleapis.com;
+                         font-src https://fonts.gstatic.com; img-src 'self' data:;
+                         script-src 'none'; form-action 'self'; frame-ancestors 'none';
+                         base-uri 'none'
+referrer-policy:         strict-origin-when-cross-origin
+strict-transport-security: max-age=31536000; includeSubDomains
+x-content-type-options:  nosniff
+x-frame-options:         DENY
+
+Set-Cookie: session=...; Secure; HttpOnly; Path=/; SameSite=Lax
+```
+
+Teste do bloqueio:
+
+```
+POST /login sem o campo _csrf  ->  HTTP 400
+```
+
+E o fluxo completo continua funcionando com o token:
+
+```
+login          -> HTTP 302
+add carrinho   -> HTTP 302
+checkout       -> HTTP 302
+mensagem: Estoque insuficiente de Chapada Geisha: você pediu 2 e temos 1 em estoque.
+```
+
+> **Sobre o `script-src 'none'`:** a loja não usa JavaScript nenhum. Isso
+> permite a política mais restritiva possível e torna XSS praticamente
+> inviável — não há onde um script injetado executar. É um benefício
+> acidental da decisão de fazer CSS puro sem framework.
+
+### 9.4 O alerta que NÃO foi corrigido, e por quê
+
+**Sub Resource Integrity ausente** — refere-se ao `<link>` do Google Fonts.
+
+SRI funciona colocando o hash do arquivo no HTML: o navegador baixa, calcula
+o hash e recusa se não bater. **Não é aplicável ao Google Fonts**: a
+resposta do `fonts.googleapis.com` **varia conforme o navegador** — o Google
+serve `woff2` moderno para uns e formatos antigos para outros. O hash mudaria
+por visitante, e a página quebraria para parte deles.
+
+**A mitigação adotada** é o CSP, que restringe `style-src` e `font-src` a
+exatamente esses dois domínios. Se alguém injetasse um `<link>` para outro
+lugar, o navegador bloquearia.
+
+**A correção definitiva** seria hospedar as fontes junto com a aplicação —
+elimina a dependência externa, o alerta e ainda deixa a página mais rápida.
+Ficou como evolução, registrada aqui.
+
+### 9.5 Testes
+
+Doze testes em `tests/test_seguranca.py` cobrem cada item corrigido — POST
+sem token, com token errado, com token válido, presença de cada cabeçalho,
+o CSP, o HSTS condicional ao `X-Forwarded-Proto`, e as flags do cookie.
+
+```
+24 passed in 71.25s
+```
+
+Sem esses testes, uma refatoração futura removeria um cabeçalho e ninguém
+perceberia até o próximo scan.
