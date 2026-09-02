@@ -180,3 +180,8 @@ material — ficaria mais difícil de defender na apresentação, não mais fác
 `teardown_appcontext`, e ajustar os cinco modelos para herdar de uma
 `DeclarativeBase`. É trabalho de uma tarde e não muda o schema, o
 `checkout` nem os testes.
+
+**Atualização.** A regra foi relaxada depois: a orientação passou a ser
+*"pode ser qualquer linguagem desde que seja SQL"*. O Flask-SQLAlchemy deixa
+de ser um desvio — mas o registro fica, porque a decisão foi tomada antes da
+autorização, e é isso que este documento existe para rastrear.
