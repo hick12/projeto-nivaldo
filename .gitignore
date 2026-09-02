@@ -25,3 +25,6 @@ desktop.ini
 # Node — usado so para gerar o deck com pptxgenjs
 node_modules/
 package-lock.json
+
+# arquivos de bloqueio do Office
+~$*
