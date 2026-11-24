@@ -1,0 +1,27 @@
+{#
+  HTTP 403 — cliente logado que nao e gestor.
+
+  Nao diz "voce nao esta na lista ADMIN_EMAILS" nem qualquer detalhe de
+  configuracao: a pagina e vista pelo cliente, e nome de variavel de
+  ambiente nao e assunto dele.
+#}
+{% extends "base.html" %}
+
+{% block titulo %}Acesso restrito — Torra &amp; Terra{% endblock %}
+
+{% block conteudo %}
+<section class="formulario-estreito">
+  <h1 class="titulo-secao">Esta área é do gestor da loja</h1>
+
+  <p>
+    O painel de indicadores e a gestão de pedidos são reservados a quem
+    administra a Torra &amp; Terra. Sua conta de cliente continua normal:
+    o catálogo, o carrinho e o seu histórico de pedidos seguem abertos.
+  </p>
+
+  <p class="acoes">
+    <a class="botao botao-primario" href="{{ url_for('catalogo') }}">Voltar ao catálogo</a>
+    <a class="botao botao-secundario" href="{{ url_for('meus_pedidos') }}">Meus pedidos</a>
+  </p>
+</section>
+{% endblock %}

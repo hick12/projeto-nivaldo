@@ -30,6 +30,12 @@
 
       {% if cliente_logado %}
         <a href="{{ url_for('meus_pedidos') }}">Meus pedidos</a>
+        {# So o gestor ve o link. A protecao de verdade e o decorador
+           gestor_obrigatorio na rota — esconder o link apenas evita
+           oferecer ao cliente uma porta que vai fechar na cara dele. #}
+        {% if gestor_logado %}
+          <a href="{{ url_for('painel') }}">Painel</a>
+        {% endif %}
         <a href="{{ url_for('sair') }}">Sair</a>
       {% else %}
         <a href="{{ url_for('login') }}">Entrar</a>
@@ -61,6 +67,8 @@
       Projeto acadêmico · FACAMP · Tratamento e Armazenamento da Informação
     </p>
     <p class="rodape-links">
+      <a href="{{ url_for('projeto_final') }}">Projeto Final</a>
+      <span aria-hidden="true">·</span>
       <a href="{{ url_for('apresentacao') }}">Apresentação do trabalho</a>
       <span aria-hidden="true">·</span>
       <a href="https://github.com/hick12/projeto-nivaldo" rel="noopener">Código no GitHub</a>

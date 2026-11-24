@@ -678,3 +678,233 @@ main { padding: var(--s-4) var(--s-3) var(--s-6); }
 .rodape-links a { color: var(--accent); text-decoration: none; }
 .rodape-links a:hover { text-decoration: underline; }
 .rodape-links span { margin: 0 8px; color: var(--line); }
+
+/* =====================================================================
+   Painel do gestor — Projeto Final
+   (rota /painel, so para quem esta em ADMIN_EMAILS)
+
+   Mesma linguagem visual da loja: espaco em branco, hierarquia por peso
+   de fonte, borda de 1px, sem sombra e sem gradiente. O painel nao ganha
+   "cara de dashboard corporativo" — ele e a mesma loja, com numeros.
+
+   Mobile-first de verdade aqui tambem: as tabelas largas rolam na
+   horizontal dentro de .rolagem-tabela em vez de estourar a tela.
+   ===================================================================== */
+
+.painel-cabecalho {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-bottom: var(--s-4);
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.painel-cabecalho .titulo-secao { margin-bottom: 4px; }
+
+/* --- Os cards de numero ------------------------------------------- */
+
+.indicadores {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--s-2);
+  margin-bottom: var(--s-5);
+}
+
+.indicador {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--s-3);
+}
+
+.indicador p { margin: 0; }
+
+/* O numero e a unica coisa grande do card. A hierarquia e o tamanho e o
+   peso da fonte — nao uma caixa colorida em volta. */
+.indicador-numero {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 34px;
+  line-height: 1.1;
+  color: var(--ink);
+  margin: 6px 0 8px !important;
+}
+
+.indicador .campo-ajuda { margin-top: 6px !important; }
+
+/* Conciliacao fechada: a borda esverdeia, discretamente. O verde esta
+   aqui porque este card e um semaforo — ele precisa ser lido de longe,
+   no projetor, sem o professor ter que comparar dois numeros. */
+.indicador-ok {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+}
+.indicador-ok .indicador-numero { color: var(--ok); }
+
+.indicador-alerta {
+  border-color: var(--erro);
+  background: var(--erro-soft);
+}
+.indicador-alerta .indicador-numero { color: var(--erro); }
+
+/* --- Blocos e tabelas --------------------------------------------- */
+
+.bloco-painel { margin-bottom: var(--s-5); }
+
+.bloco-painel .titulo-secao { margin-bottom: 6px; }
+
+.painel-duas-colunas {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--s-4);
+}
+
+.rolagem-tabela {
+  overflow-x: auto;
+  /* -webkit-overflow-scrolling: rolagem com inercia no iOS. O professor
+     pode abrir no celular. */
+  -webkit-overflow-scrolling: touch;
+}
+
+.tabela-painel {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--s-2);
+  font-size: 15px;
+}
+
+.tabela-painel caption {
+  text-align: left;
+  margin-bottom: var(--s-1);
+}
+
+.tabela-painel th,
+.tabela-painel td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.tabela-painel thead th {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line-forte);
+  white-space: nowrap;
+}
+
+.tabela-painel tbody th {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.tabela-painel tbody tr:last-child th,
+.tabela-painel tbody tr:last-child td { border-bottom: none; }
+
+.tabela-painel .numerico {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tabela-painel a { color: var(--accent); text-decoration: none; }
+.tabela-painel a:hover { text-decoration: underline; }
+
+/* --- As barras em SVG ---------------------------------------------
+   A largura do preenchimento vem do ATRIBUTO width do <rect>, escrito
+   pelo servidor. Nao e CSS: a CSP da loja traz style-src 'self' sem
+   'unsafe-inline' e descartaria um style="width:62%".
+
+   viewBox 0 0 100 8 + preserveAspectRatio="none" fazem width="62"
+   significar exatamente 62% da largura da celula, em qualquer tela.
+   ------------------------------------------------------------------ */
+
+.coluna-grafico { width: 34%; min-width: 90px; }
+
+.barra {
+  display: block;
+  width: 100%;
+  height: 8px;
+}
+
+.barra-trilho { fill: var(--line); }
+.barra-cheia  { fill: var(--accent); }
+
+/* --- Selos de status ---------------------------------------------- */
+
+.selo-criado    { color: var(--muted); }
+.selo-pago      { color: var(--accent); border-color: var(--accent); }
+.selo-enviado   { color: var(--ok);     border-color: var(--ok); }
+.selo-cancelado { color: var(--erro);   border-color: var(--erro); }
+
+/* --- Acoes de mudanca de status ----------------------------------- */
+
+.acoes-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+
+.acoes-status .botao {
+  padding: 6px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* Cancelar e destrutivo: devolve estoque e fecha o pedido para sempre.
+   A borda vermelha e o aviso visual; nao ha confirmacao em JavaScript
+   porque a pagina nao executa JavaScript. A barreira de verdade e o
+   token CSRF e a regra de transicao no servidor. */
+.botao-perigo {
+  background: transparent;
+  border: 1px solid var(--erro);
+  color: var(--erro);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  font-family: inherit;
+}
+.botao-perigo:hover { background: var(--erro-soft); }
+
+.painel-nota {
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--line);
+}
+
+.tabela-painel code,
+.bloco-painel code,
+.indicador code,
+.painel-nota code {
+  font-size: 13px;
+  background: var(--accent-soft);
+  padding: 1px 5px;
+  border-radius: var(--r-sm);
+}
+
+@media (min-width: 700px) {
+  .painel-cabecalho {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+
+  .indicadores { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (min-width: 1000px) {
+  .indicadores { grid-template-columns: repeat(4, 1fr); }
+  .painel-duas-colunas { grid-template-columns: 1fr 1fr; }
+}
+
+/* O gestor imprime o painel para levar a reuniao. Sem o menu, sem o
+   rodape, sem fundo colorido — tinta e papel. */
+@media print {
+  .cabecalho, .rodape, .filtros, .acoes-status, .pular-para-conteudo {
+    display: none !important;
+  }
+  .indicador, .tabela-painel { break-inside: avoid; }
+  .barra-cheia { fill: #555; }
+  .barra-trilho { fill: #ddd; }
+}

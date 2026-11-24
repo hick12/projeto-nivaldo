@@ -1,0 +1,60 @@
+{#
+  Pagina da aplicacao degradada (HTTP 503).
+
+  Nao estende o base.html de proposito: a loja nao subiu, o cabecalho com
+  catalogo e carrinho aponta para rotas que nao existem neste processo.
+
+  Mostra o NOME da variavel que falta, nunca o valor — esta pagina e
+  publica, qualquer pessoa na internet pode abri-la.
+#}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Torra &amp; Terra — fora do ar</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<main id="conteudo" class="container">
+  {# Sem atributo style: a CSP da loja traz `style-src 'self'` sem
+     'unsafe-inline', e o navegador descarta estilo escrito no HTML. Todo
+     visual mora no static/style.css. #}
+  <section class="formulario-estreito">
+    <p class="marca">Torra <span class="marca-e">&amp;</span> Terra</p>
+
+    <h1 class="titulo-secao">A loja está fora do ar</h1>
+
+    <p class="aviso aviso-erro" role="status">
+      A aplicação subiu sem a configuração mínima de produção e não vai
+      atender pedidos até que isso seja corrigido.
+    </p>
+
+    <p>
+      {% if faltando|length == 1 %}
+        Falta definir esta variável de ambiente no provedor:
+      {% else %}
+        Faltam definir estas variáveis de ambiente no provedor:
+      {% endif %}
+    </p>
+
+    <ul class="ficha">
+      {% for nome in faltando %}
+        <li class="ficha-linha"><strong>{{ nome }}</strong></li>
+      {% endfor %}
+    </ul>
+
+    <p class="campo-ajuda">
+      Nenhum valor é exibido nesta página — apenas o nome do que falta.
+      Nada foi gravado no banco e nenhum pedido foi perdido.
+    </p>
+
+    <p class="rodape-nota">
+      Projeto acadêmico · FACAMP · Tratamento e Armazenamento da Informação
+    </p>
+  </section>
+</main>
+
+</body>
+</html>

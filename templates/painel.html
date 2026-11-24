@@ -1,0 +1,389 @@
+{#
+  Painel de indicadores — Projeto Final. Rota /painel, so para gestor.
+
+  DUAS RESTRICOES moldaram esta pagina, e vale conhecer as duas:
+
+  1. SEM JAVASCRIPT. A loja serve a CSP `script-src 'none'`, e o painel
+     mexe com dinheiro e estoque — e a ultima pagina do site que deveria
+     abrir excecao. Entao nada de biblioteca de grafico.
+
+  2. SEM ATRIBUTO style. A mesma CSP traz `style-src 'self'` sem
+     'unsafe-inline': o navegador DESCARTA todo style= escrito no HTML.
+     Isso elimina o truque comum de barra de grafico em CSS
+     (`style="width: 62%"`), que simplesmente nao renderiza aqui.
+
+  A saida: barras em SVG gerado pelo servidor. A largura vai no ATRIBUTO
+  width do <rect>, que e atributo de apresentacao do SVG e nao CSS — a CSP
+  nao tem o que bloquear. Com viewBox="0 0 100 8" e
+  preserveAspectRatio="none", width="62" e exatamente 62% da largura da
+  celula, em qualquer tela.
+
+  E cada grafico e uma TABELA de verdade com a barra dentro da celula, nao
+  um desenho com rotulos soltos. Assim o numero continua legivel no
+  projetor, no celular, no leitor de tela e na impressao.
+#}
+{% extends "base.html" %}
+
+{% block titulo %}Painel — Torra &amp; Terra{% endblock %}
+
+
+{% macro barra(percentual) %}
+  {#- Trilho + preenchimento. aria-hidden porque o valor numerico ja esta
+      na celula ao lado: anunciar a barra tambem seria repeticao. -#}
+  <svg class="barra" viewBox="0 0 100 8" preserveAspectRatio="none"
+       aria-hidden="true" focusable="false">
+    <rect class="barra-trilho" x="0" y="0" width="100" height="8"></rect>
+    <rect class="barra-cheia" x="0" y="0"
+          width="{{ [percentual|float, 100]|min|round(2) }}" height="8"></rect>
+  </svg>
+{% endmacro %}
+
+
+{% macro rotulo_acao(alvo) %}
+  {%- if alvo == 'PAGO' -%}Marcar como pago
+  {%- elif alvo == 'ENVIADO' -%}Marcar como enviado
+  {%- elif alvo == 'CANCELADO' -%}Cancelar
+  {%- else -%}{{ alvo }}{%- endif -%}
+{% endmacro %}
+
+
+{% block conteudo %}
+
+<nav class="migalha" aria-label="Você está em">
+  <a href="{{ url_for('catalogo') }}">Catálogo</a> · Painel do gestor
+</nav>
+
+<header class="painel-cabecalho">
+  <div>
+    <h1 class="titulo-secao">Painel do gestor</h1>
+    <p class="campo-ajuda">
+      Sete indicadores lidos do banco pelas consultas de
+      <code>SQL/dashboard.sql</code>. Período de
+      <strong>{{ d.dias }} dias</strong>, gerado em
+      {{ d.gerado_em.strftime('%d/%m/%Y às %H:%M') }}.
+    </p>
+  </div>
+
+  {# Filtro de periodo por link GET: muda a leitura, nao o estado. #}
+  <div class="filtros" role="group" aria-label="Período">
+    {% for p in periodos %}
+      <a class="filtro {% if p == d.dias %}filtro-ativo{% endif %}"
+         href="{{ url_for('painel', dias=p) }}"
+         {% if p == d.dias %}aria-current="true"{% endif %}>{{ p }} dias</a>
+    {% endfor %}
+  </div>
+</header>
+
+
+{# ---------------------------------------------------------------
+   1, 2 e 7 — os numeros de abertura
+   --------------------------------------------------------------- #}
+<section class="indicadores" aria-label="Indicadores do período">
+
+  <article class="indicador">
+    <p class="rotulo">Faturamento no período</p>
+    <p class="indicador-numero">{{ d.faturamento|brl }}</p>
+    <p class="campo-ajuda">
+      {{ d.pedidos }} pedido{{ 's' if d.pedidos != 1 }} fechado{{ 's' if d.pedidos != 1 }}.
+      Cancelados não entram.
+    </p>
+  </article>
+
+  <article class="indicador">
+    <p class="rotulo">Ticket médio</p>
+    <p class="indicador-numero">{{ d.ticket_medio|brl }}</p>
+    <p class="campo-ajuda">
+      Média do total por pedido, calculada em <code>NUMERIC</code> pelo
+      próprio banco.
+    </p>
+  </article>
+
+  <article class="indicador">
+    <p class="rotulo">Cafés em estoque crítico</p>
+    <p class="indicador-numero">{{ d.estoque_critico|length }}</p>
+    <p class="campo-ajuda">
+      Com {{ d.limite_estoque }} unidades ou menos. Saldo de agora, não do período.
+    </p>
+  </article>
+
+  {#
+    O indicador que responde a dor do contexto escolhido — "falhas de
+    confirmação e de conciliação". Ele precisa dar zero divergência.
+  #}
+  <article class="indicador {% if d.conciliacao.divergentes %}indicador-alerta{% else %}indicador-ok{% endif %}">
+    <p class="rotulo">Conciliação</p>
+    <p class="indicador-numero">
+      {{ d.conciliacao.conciliados }} de {{ d.conciliacao.pedidos }}
+    </p>
+    <p class="campo-ajuda">
+      {% if d.conciliacao.divergentes %}
+        <strong>{{ d.conciliacao.divergentes }} pedido(s) com total
+        diferente da soma dos itens.</strong> Isso não deveria acontecer.
+      {% else %}
+        Todo pedido tem <code>total</code> igual à soma de
+        <code>quantidade × preco_unitario</code> dos itens. É a prova de
+        que o checkout atômico fecha a conta.
+      {% endif %}
+    </p>
+  </article>
+
+</section>
+
+
+{# ---------------------------------------------------------------
+   3 — vendas por regiao
+   --------------------------------------------------------------- #}
+<section class="bloco-painel">
+  <h2 class="titulo-secao">Vendas por região produtora</h2>
+  <p class="campo-ajuda">
+    Soma de <code>quantidade × preco_unitario</code> dos itens, agrupada por
+    <code>categorias.regiao</code>. O valor usa o preço congelado da compra,
+    não o preço de hoje — por isso o histórico não muda quando a tabela é
+    reajustada.
+  </p>
+
+  {% if d.vendas_por_regiao %}
+  <table class="tabela-painel">
+    <caption class="campo-ajuda">
+      Participação de cada região no faturamento do período.
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">Região</th>
+        <th scope="col" class="coluna-grafico">Participação</th>
+        <th scope="col" class="numerico">%</th>
+        <th scope="col" class="numerico">Faturamento</th>
+        <th scope="col" class="numerico">Unidades</th>
+        <th scope="col" class="numerico">Pedidos</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for linha in d.vendas_por_regiao %}
+      <tr>
+        <th scope="row">{{ linha.regiao }}</th>
+        <td class="coluna-grafico">{{ barra(linha.participacao) }}</td>
+        <td class="numerico">{{ linha.participacao }}%</td>
+        <td class="numerico">{{ linha.faturamento|brl }}</td>
+        <td class="numerico">{{ linha.unidades }}</td>
+        <td class="numerico">{{ linha.pedidos }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="vazio">Nenhuma venda no período.</p>
+  {% endif %}
+</section>
+
+
+{# ---------------------------------------------------------------
+   4 — top 5 cafes, com a moagem mais pedida
+   --------------------------------------------------------------- #}
+<section class="bloco-painel">
+  <h2 class="titulo-secao">Os cinco cafés que mais saíram</h2>
+  <p class="campo-ajuda">
+    A coluna <strong>moagem mais pedida</strong> só existe porque
+    <code>moagem</code> mora em <code>itens_pedido</code>, e não em
+    <code>produtos</code>. Se fosse atributo do café, cada moagem seria um
+    produto diferente e esta pergunta não teria resposta.
+  </p>
+
+  {% if d.top_cafes %}
+  {% set maximo = d.top_cafes|map(attribute='unidades')|max %}
+  <table class="tabela-painel">
+    <thead>
+      <tr>
+        <th scope="col">Café</th>
+        <th scope="col">Região</th>
+        <th scope="col" class="coluna-grafico">Volume</th>
+        <th scope="col" class="numerico">Unidades</th>
+        <th scope="col" class="numerico">Faturamento</th>
+        <th scope="col">Moagem mais pedida</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for linha in d.top_cafes %}
+      <tr>
+        <th scope="row">
+          <a href="{{ url_for('produto', produto_id=linha.id) }}">{{ linha.nome }}</a>
+        </th>
+        <td>{{ linha.regiao }}</td>
+        <td class="coluna-grafico">
+          {{ barra(linha.unidades / (maximo or 1) * 100) }}
+        </td>
+        <td class="numerico">{{ linha.unidades }}</td>
+        <td class="numerico">{{ linha.faturamento|brl }}</td>
+        <td>
+          <span class="selo">{{ linha.moagem_preferida or '—' }}</span>
+          {% if linha.unidades_na_moagem %}
+            <span class="campo-ajuda">{{ linha.unidades_na_moagem }} un.</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="vazio">Nenhum café vendido no período.</p>
+  {% endif %}
+</section>
+
+
+{# ---------------------------------------------------------------
+   5 e 6 — estoque critico e pedidos por status, lado a lado
+   --------------------------------------------------------------- #}
+<div class="painel-duas-colunas">
+
+  <section class="bloco-painel">
+    <h2 class="titulo-secao">Estoque crítico</h2>
+    <p class="campo-ajuda">
+      O que precisa ser torrado nesta semana para a loja não recusar venda.
+    </p>
+
+    {% if d.estoque_critico %}
+    <table class="tabela-painel">
+      <thead>
+        <tr>
+          <th scope="col">Café</th>
+          <th scope="col">Região</th>
+          <th scope="col" class="numerico">Estoque</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for linha in d.estoque_critico %}
+        <tr>
+          <th scope="row">
+            <a href="{{ url_for('produto', produto_id=linha.id) }}">{{ linha.nome }}</a>
+          </th>
+          <td>{{ linha.regiao }}</td>
+          <td class="numerico">
+            <strong class="{% if linha.estoque == 0 %}esgotado{% else %}estoque-baixo{% endif %}">
+              {{ linha.estoque }}
+            </strong>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="vazio">Nenhum café abaixo de {{ d.limite_estoque }} unidades.</p>
+    {% endif %}
+  </section>
+
+  <section class="bloco-painel">
+    <h2 class="titulo-secao">Pedidos por status</h2>
+    <p class="campo-ajuda">
+      Os quatro status vêm da constraint <code>ck_pedidos_status</code>.
+      Aqui os cancelados entram: a pergunta é sobre a fila de trabalho.
+    </p>
+
+    {% set maximo_status = d.pedidos_por_status|map(attribute='pedidos')|max %}
+    <table class="tabela-painel">
+      <thead>
+        <tr>
+          <th scope="col">Status</th>
+          <th scope="col" class="coluna-grafico">Volume</th>
+          <th scope="col" class="numerico">Pedidos</th>
+          <th scope="col" class="numerico">Valor</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for linha in d.pedidos_por_status %}
+        <tr>
+          <th scope="row"><span class="selo">{{ linha.status }}</span></th>
+          <td class="coluna-grafico">
+            {{ barra(linha.pedidos / (maximo_status or 1) * 100) }}
+          </td>
+          <td class="numerico">{{ linha.pedidos }}</td>
+          <td class="numerico">{{ linha.valor|brl }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+</div>
+
+
+{# ---------------------------------------------------------------
+   Gestao de pedidos — a atualizacao de registro
+   --------------------------------------------------------------- #}
+<section class="bloco-painel" id="pedidos">
+  <h2 class="titulo-secao">Pedidos recentes</h2>
+  <p class="campo-ajuda">
+    As transições permitidas são <code>CRIADO → PAGO → ENVIADO</code>, e
+    <code>CANCELADO</code> a partir de CRIADO ou PAGO. Cancelar
+    <strong>devolve o estoque dos itens</strong> na mesma transação que
+    muda o status, com <code>SELECT ... FOR UPDATE</code> nos produtos —
+    igual ao checkout. Enviado e cancelado são estados finais.
+  </p>
+
+  {% if pedidos %}
+  <div class="rolagem-tabela">
+    <table class="tabela-painel">
+      <thead>
+        <tr>
+          <th scope="col">Pedido</th>
+          <th scope="col">Cliente</th>
+          <th scope="col">Data</th>
+          <th scope="col" class="numerico">Itens</th>
+          <th scope="col" class="numerico">Total</th>
+          <th scope="col">Status</th>
+          <th scope="col">Mudar para</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in pedidos %}
+        <tr>
+          <th scope="row" class="pedido-numero">#{{ p.id }}</th>
+          <td>{{ p.cliente }}</td>
+          <td>{{ p.criado_em.strftime('%d/%m/%Y %H:%M') }}</td>
+          <td class="numerico">{{ p.itens }}</td>
+          <td class="numerico">{{ p.total|brl }}</td>
+          <td><span class="selo selo-{{ p.status|lower }}">{{ p.status }}</span></td>
+          <td>
+            {% set permitidas = transicoes.get(p.status, ()) %}
+            {% if permitidas %}
+              {#
+                POST, nunca GET: muda estado. Com link GET, o
+                pre-carregamento do navegador cancelaria pedido sozinho.
+
+                Um formulario, vários botões de submit com o mesmo
+                `name="status"` e valores diferentes: o navegador envia
+                apenas o do botão clicado.
+              #}
+              <form class="acoes-status" method="post"
+                    action="{{ url_for('mudar_status_pedido', pedido_id=p.id) }}">
+                <input type="hidden" name="_csrf" value="{{ token_csrf() }}">
+                <input type="hidden" name="dias" value="{{ d.dias }}">
+                {% for alvo in permitidas %}
+                  <button type="submit" name="status" value="{{ alvo }}"
+                          class="botao botao-{{ 'perigo' if alvo == 'CANCELADO' else 'secundario' }}">
+                    {{ rotulo_acao(alvo) }}
+                  </button>
+                {% endfor %}
+              </form>
+            {% else %}
+              <span class="campo-ajuda">estado final</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="vazio">
+      Nenhum pedido ainda. Rode <code>flask --app app seed-demo</code> para
+      carregar os pedidos de demonstração.
+    </p>
+  {% endif %}
+</section>
+
+
+<p class="campo-ajuda painel-nota">
+  Os mesmos indicadores em JSON: <code>GET /api/dashboard?dias={{ d.dias }}</code>
+  — documentado em <code>docs/api.md</code>.
+</p>
+
+{% endblock %}

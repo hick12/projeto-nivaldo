@@ -1,0 +1,27 @@
+{#
+  HTTP 500 — falha inesperada.
+
+  Sem traceback, sem nome de arquivo, sem trecho de SQL: stack trace em
+  pagina publica entrega estrutura de diretorio e versao de biblioteca a
+  quem esta sondando o site. O detalhe fica no log do servidor.
+#}
+{% extends "base.html" %}
+
+{% block titulo %}Algo deu errado — Torra &amp; Terra{% endblock %}
+
+{% block conteudo %}
+<section class="formulario-estreito">
+  <h1 class="titulo-secao">Algo deu errado do nosso lado</h1>
+
+  <p>
+    A falha foi registrada e será investigada. Se você estava finalizando
+    uma compra, <strong>nada foi cobrado e nada foi gravado pela metade</strong>:
+    o checkout é uma transação única, e uma falha desfaz a operação inteira.
+  </p>
+
+  <p class="acoes">
+    <a class="botao botao-primario" href="{{ url_for('catalogo') }}">Voltar ao catálogo</a>
+    <a class="botao botao-secundario" href="{{ url_for('carrinho') }}">Ver o carrinho</a>
+  </p>
+</section>
+{% endblock %}
