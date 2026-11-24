@@ -622,3 +622,387 @@ o CSP, o HSTS condicional ao `X-Forwarded-Proto`, e as flags do cookie.
 
 Sem esses testes, uma refatoração futura removeria um cabeçalho e ninguém
 perceberia até o próximo scan.
+
+---
+
+# Projeto Final
+
+Bloco acrescentado na entrega do **Projeto Final**. As saídas abaixo são
+reais, coladas do terminal.
+
+**Ambiente de coleta:** PostgreSQL 16, Python 3.13.18, pytest 8.3.4.
+**Coletado em:** 24/11/2026.
+
+> As evidências das seções 1 a 9 deste documento continuam válidas e foram
+> colhidas no banco de produção do Railway. As deste bloco foram colhidas
+> no ambiente de desenvolvimento, com o catálogo do `seed.sql` e os
+> pedidos do `seed-demo`. As de produção entram depois do deploy.
+
+---
+
+## 10. Suíte de testes completa
+
+```
+============================= test session starts ==============================
+platform linux -- Python 3.13.18, pytest-8.3.4, pluggy-1.7.0
+rootdir: /home/user/projeto-nivaldo
+collected 113 items
+
+tests/test_api.py ...........................                            [ 23%]
+tests/test_checkout.py ............                                      [ 34%]
+tests/test_painel.py ..........................                          [ 57%]
+tests/test_producao.py ...........................                       [ 81%]
+tests/test_seguranca.py .....................                            [100%]
+
+============================= 113 passed in 8.16s ==============================
+```
+
+Os três arquivos novos cobrem o que o manual cobra nesta entrega.
+
+### 10.1 Dashboard — o indicador muda depois de inserir dados
+
+`test_indicador_se_move_depois_de_um_checkout` lê os indicadores, faz uma
+compra de 3 × R$ 89,00 e lê de novo:
+
+| Indicador | Antes | Depois |
+|---|---|---|
+| Pedidos no período | 0 | 1 |
+| Faturamento | R$ 0,00 | R$ 267,00 |
+| Ticket médio | R$ 0,00 | R$ 267,00 |
+| Vendas por região | nenhuma linha | Bahia, 3 unidades, 100% |
+
+O teste não aceita "mais ou menos": compara o valor exato.
+
+### 10.2 Conciliação em zero depois de vários checkouts
+
+`test_conciliacao_fica_em_zero_depois_de_varios_checkouts` cria oito
+pedidos, de dois clientes, com moagens misturadas:
+
+```
+pedidos = 8     conciliados = 8     divergentes = 0
+```
+
+E refaz a conferência **à mão**, sem passar pela consulta do painel: se as
+duas contas discordassem, uma das duas estaria errada.
+
+### 10.3 Atualização de registro — antes e depois
+
+`test_transicao_valida_criado_para_pago` e os parametrizados de transição
+inválida:
+
+```
+CRIADO  -> PAGO       ok        (de=CRIADO para=PAGO unidades_devolvidas=0)
+PAGO    -> ENVIADO    ok
+CRIADO  -> ENVIADO    recusado  "Não é possível ir de CRIADO para ENVIADO.
+                                 De CRIADO só dá para ir para PAGO ou CANCELADO."
+ENVIADO -> PAGO       recusado  estado final
+ENVIADO -> CANCELADO  recusado  estado final
+CANCELADO -> PAGO     recusado  estado final
+```
+
+Em todos os casos recusados, o teste confere que **o status não mudou**.
+
+### 10.4 Cancelamento devolve o estoque, e um cancelamento recusado não
+
+`test_cancelamento_devolve_o_estoque`: pedido de 2 unidades, estoque em 8
+depois da compra, volta para 10 no cancelamento. O `total` e os itens do
+pedido continuam gravados — é por isso que a conciliação continua
+fechando.
+
+`test_cancelamento_recusado_nao_altera_nada`: cancelar de novo um pedido
+já cancelado é recusado, e o estoque **não** é devolvido uma segunda vez.
+Clique repetido não pode criar estoque do nada.
+
+### 10.5 Produção sem segredo
+
+`test_producao_sem_secret_key_responde_503` sobe a aplicação com
+`AMBIENTE=producao`, `DATABASE_URL` definida e `SECRET_KEY` ausente:
+
+```
+GET /              -> 503
+GET /carrinho      -> 503
+GET /checkout      -> 503
+GET /painel        -> 503
+GET /rota/inventada-> 503
+POST /checkout     -> 503   (não 405)
+```
+
+A página nomeia `SECRET_KEY` e o teste confere que **nada do valor** sai:
+nem a senha do banco, nem `torra_app:senha`, nem `postgresql://`, nem
+`banco:5432`.
+
+---
+
+## 11. O índice novo: `idx_pedidos_criado_em`
+
+Medição completa em `SQL/consultas.sql`, seção 5. Resumo:
+
+### 11.1 Na base de demonstração — 40 pedidos
+
+**Seq Scan, com e sem o índice**, e é a decisão certa do planejador: a
+tabela inteira ocupa uma página de disco.
+
+```
+Aggregate  (cost=1.97..1.98 rows=1) (actual time=0.018..0.018 rows=1)
+  ->  Seq Scan on pedidos  (cost=0.00..1.80 rows=34)
+                           (actual time=0.005..0.010 rows=34)
+        Filter: ((status <> 'CANCELADO') AND (criado_em >= ...))
+        Rows Removed by Filter: 6
+Execution Time: 0.053 ms
+```
+
+### 11.2 Com 60.000 pedidos — a virada
+
+Carga sintética de 60 mil pedidos em 24 meses, num banco descartável.
+
+**Card de faturamento do painel:**
+
+| | Plano | Tempo |
+|---|---|---|
+| Antes | Seq Scan · `Rows Removed by Filter: 58162` | **6,713 ms** |
+| Depois | Bitmap Index Scan · `Rows Removed by Filter: 640` | **0,900 ms** |
+
+7,5× mais rápido. O custo estimado caiu de 1667 para 562 — é por isso que
+o planejador troca de plano sozinho, sem dica nenhuma no código.
+
+**Lista de pedidos recentes (`ORDER BY criado_em DESC LIMIT 20`):**
+
+| | Plano | Tempo |
+|---|---|---|
+| Antes | Seq Scan de 60.000 linhas + `top-N heapsort` | **10,401 ms** |
+| Depois | Index Scan, **sem Sort no plano** | **0,031 ms** |
+
+335× mais rápido. É a razão de o índice ser `criado_em DESC` e não apenas
+`criado_em`: o índice já está na ordem pedida, o banco lê 20 entradas e
+para.
+
+**O preço:**
+
+```
+tabela pedidos ...... 6736 kB
+idx_pedidos_criado_em  1328 kB   (~20% do tamanho da tabela)
+```
+
+Índice não é de graça: todo INSERT de pedido passa a escrever em dois
+lugares. O checkout fica marginalmente mais lento para o painel ficar 335×
+mais rápido.
+
+---
+
+## 12. Migração aplicada sem apagar nada
+
+`SQL/migracao_projeto_final.sql` rodado **duas vezes** seguidas, para
+provar a idempotência. Na segunda:
+
+```
+NOTICE:  relation "idx_pedidos_criado_em" already exists, skipping
+```
+
+Conferência depois de aplicar:
+
+```
+       indexname        |  tablename   
+------------------------+--------------
+ idx_itens_pedido       | itens_pedido
+ idx_pedidos_cliente    | pedidos
+ idx_pedidos_criado_em  | pedidos      <- o novo
+ idx_produtos_categoria | produtos
+ idx_produtos_nome      | produtos
+(5 rows)
+
+ tabelas | checks | foreign_keys 
+---------+--------+--------------
+       5 |     11 |            4
+
+ categorias | produtos | clientes | pedidos | itens 
+------------+----------+----------+---------+-------
+          4 |       12 |        0 |       0 |     0
+```
+
+A estrutura não mudou — as mesmas 5 tabelas, 11 CHECK e 4 FK — e nenhum
+dado foi tocado.
+
+---
+
+## 13. Indicadores do painel, com os dados de demonstração
+
+Saída do `psql "$DATABASE_URL" -f SQL/dashboard.sql`:
+
+```
+ pedidos | faturamento 
+---------+-------------
+      34 |     7571.00
+
+     ticket_medio     
+----------------------
+ 222.6764705882352941
+
+    regiao    | pedidos | unidades | faturamento 
+--------------+---------+----------+-------------
+ Minas Gerais |      28 |       66 |     4513.00
+ Bahia        |      12 |       20 |     1618.00
+ Sao Paulo    |      12 |       23 |     1440.00
+
+ id |          nome           |    regiao    | unidades | faturamento | moagem_preferida 
+----+-------------------------+--------------+----------+-------------+------------------
+  4 | Alta Mogiana do Cerrado | Minas Gerais |       17 |     1156.00 | MEDIA
+  6 | Cerrado Reserva         | Minas Gerais |       13 |      715.00 | GRAO
+  7 | Serra da Mantiqueira    | Minas Gerais |       12 |      984.00 | MEDIA
+  1 | Fazenda Serra Negra     | Sao Paulo    |       11 |      682.00 | FINA
+ 10 | Piata Altitude          | Bahia        |       11 |      979.00 | MEDIA
+
+ id |       nome        |    regiao    | estoque | preco  
+----+-------------------+--------------+---------+--------
+ 11 | Chapada Geisha    | Bahia        |       1 | 148.00
+  5 | Vereda do Cerrado | Minas Gerais |       5 |  96.00
+
+  status   | pedidos |  valor  
+-----------+---------+---------
+ CRIADO    |       4 |  741.00
+ PAGO      |       6 | 1113.00
+ ENVIADO   |      24 | 5717.00
+ CANCELADO |       6 |  818.00
+
+ pedidos | divergentes | conciliados 
+---------+-------------+-------------
+      40 |           0 |          40
+```
+
+**Zero divergências em 40 pedidos.** É o indicador central do trabalho, e
+ele vale mais por ser uma consulta sobre 100% dos registros do que por
+qualquer afirmação sobre o código.
+
+> O `Chapada Geisha` aparece no estoque crítico com 1 unidade. Isso é
+> proposital e o `seed-demo` o preserva: é o café que deixa a
+> demonstração do rollback sempre pronta.
+
+---
+
+## 14. O controle de acesso, verificado
+
+Sem sessão:
+
+```
+/health          -> 200
+/api/categorias  -> 200
+/api/produtos    -> 200
+/api/resumo      -> 200
+/api/dashboard   -> 401   <- restrito ao gestor
+/api/pedidos     -> 401   <- exige login
+```
+
+Com sessão de **cliente comum**:
+
+```
+GET  /painel                        -> 403, com página amigável
+POST /painel/pedidos/<id>/status    -> 403, e o status não muda
+GET  /api/dashboard                 -> 403 {"erro": "Acesso restrito ao gestor da loja."}
+```
+
+Com sessão de **gestor** (e-mail em `ADMIN_EMAILS`):
+
+```
+GET /painel        -> 200
+GET /api/dashboard -> 200
+```
+
+O `POST` barrado para o cliente comum é o caso que importa: ele foi
+enviado **com token CSRF válido da própria sessão**. O que barra é o
+papel, não o token.
+
+---
+
+## 15. Logs estruturados
+
+Linhas reais do `stdout` da aplicação, uma por evento:
+
+```
+INFO    evento=aplicacao_iniciada producao=False
+        banco=postgresql+psycopg://torra_app:***@127.0.0.1:5432/torra_terra gestores=1
+
+WARNING evento=login_falho email=an***@exemplo.com motivo=senha_incorreta origem=127.0.0.1
+WARNING evento=login_falho email=ni***@exemplo.com motivo=conta_inexistente origem=127.0.0.1
+
+WARNING evento=csrf_barrado metodo=POST rota=/login token_enviado=nao sessao_com_token=nao
+
+WARNING evento=acesso_negado_painel email=an***@exemplo.com rota=/painel
+
+WARNING evento=checkout_recusado motivo=estoque_insuficiente
+        cafe='Chapada Geisha' disponivel=1 pedido=2 cliente=1
+
+INFO    evento=status_alterado pedido=42 de=CRIADO para=PAGO
+        unidades_devolvidas=0 gestor=ge***@exemplo.com
+```
+
+Três coisas a observar:
+
+1. **A senha do banco nunca aparece.** A `DATABASE_URL` sai mascarada em
+   toda linha de log, e a query inteira é descartada porque `?password=`
+   também é credencial.
+2. **E-mail entra mascarado.** `an***@exemplo.com` permite investigar
+   força bruta — mesmo domínio? mesma conta repetida? — sem o painel de
+   logs virar uma lista de e-mails de clientes.
+3. **O motivo do login falho fica só no log.** A tela diz "E-mail ou senha
+   inválidos" para os dois casos; o log distingue `senha_incorreta` de
+   `conta_inexistente`. É exatamente a informação que a tela se recusa a
+   dar, no único lugar em que ela é útil e não é explorável.
+
+No `csrf_barrado`, o log registra se havia token e **o tamanho** dele,
+nunca o valor — serve para distinguir "não mandou nada" de "mandou um
+token errado".
+
+---
+
+## 16. O site do Projeto Final
+
+Verificado no Chromium, em `/projeto-final`:
+
+```
+12 seções no índice lateral · 12 seções renderizadas
+7 componentes interativos montados
+11 tabelas · 15 blocos de código
+0 erros no console · 0 violações de CSP
+0 blocos com dado faltando
+```
+
+Cada componente, exercitado:
+
+| Componente | Verificação |
+|---|---|
+| `as_is_to_be` | O botão alterna entre os dois fluxos; o AS IS mostra as falhas em vermelho, o TO BE os pontos de validação em verde |
+| `er` | Clicar em `itens_pedido` abre as 7 colunas com tipo e constraint, mais o índice que a tabela usa |
+| `checkout` | No passo 9 de 10, a faixa do Bruno está em estado de falha e a narração diz *"Rollback completo: nem o cabeçalho do pedido sobrou"* |
+| `explain` | Os dois planos lado a lado, com 6,713 ms → 0,900 ms e 10,401 ms → 0,031 ms |
+| `indicadores` | Leu `/api/resumo` ao vivo e mostrou **42 de 42 pedidos conciliados** |
+| `testes` | O filtro por tipo funciona: *"Mostrando os casos do tipo Transação"* |
+
+### 16.1 A política de conteúdo, verificada
+
+```
+GET /projeto-final
+content-security-policy: default-src 'self'; style-src 'self' https://fonts.googleapis.com;
+                         font-src https://fonts.gstatic.com; img-src 'self' data:;
+                         script-src 'self'; connect-src 'self'; form-action 'self';
+                         frame-ancestors 'none'; base-uri 'none'
+
+GET /  (e todas as outras rotas da loja)
+content-security-policy: ... script-src 'none'; ...
+```
+
+E no HTML servido da rota `/projeto-final`:
+
+```
+style="        -> 0 ocorrências
+<script>       -> 0 ocorrências
+<script src=>  -> 1 ocorrência   (o app.js, sem corpo)
+```
+
+Sem `unsafe-inline` e sem `unsafe-eval`. Conteúdo injetado no HTML
+continua sem poder executar.
+
+---
+
+## 17. Prints
+
+Em `docs/evidencias/projeto_final/`. A lista, com o que cada um comprova,
+está em `docs/projeto_final_entrega.md`.
