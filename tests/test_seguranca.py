@@ -9,10 +9,8 @@ import re
 import pytest
 
 
-@pytest.fixture
-def navegador(aplicacao, contexto):
-    """Cliente HTTP de teste, com sessao propria."""
-    return aplicacao.test_client()
+# A fixture `navegador` mora no conftest.py, usada tambem pelos testes do
+# painel e da API — uma definicao so, para as tres suites nao divergirem.
 
 
 def extrair_token(html: str) -> str:
@@ -158,3 +156,74 @@ def test_pagina_de_cliente_logado_nao_vai_para_cache(navegador):
     # Em computador compartilhado, o botao voltar nao pode mostrar o
     # historico de quem acabou de sair.
     assert navegador.get("/").headers.get("Cache-Control") == "no-store"
+
+
+# ---------------------------------------------------------------------
+# A excecao de CSP da rota /projeto-final — Projeto Final
+#
+# O site do relatorio precisa de JavaScript e e a UNICA rota que o
+# executa. Estes testes travam os dois lados da regra: que a excecao
+# existe onde deve, e que ela nao vazou para o resto da loja.
+# ---------------------------------------------------------------------
+
+def test_projeto_final_libera_script_proprio(navegador):
+    resposta = navegador.get("/projeto-final")
+    csp = resposta.headers.get("Content-Security-Policy", "")
+
+    assert resposta.status_code == 200
+    assert "script-src 'self'" in csp
+
+    # O que a excecao NAO pode liberar. Sem estes dois, conteudo
+    # injetado no HTML continua sem poder executar.
+    assert "unsafe-inline" not in csp
+    assert "unsafe-eval" not in csp
+
+    # O fetch dos indicadores so alcanca a propria aplicacao.
+    assert "connect-src 'self'" in csp
+
+    # E o resto da politica continua igual ao da loja.
+    assert "frame-ancestors 'none'" in csp
+    assert "base-uri 'none'" in csp
+
+
+@pytest.mark.parametrize(
+    "rota", ["/", "/carrinho", "/login", "/cadastro", "/apresentacao"]
+)
+def test_o_resto_da_loja_continua_sem_javascript(navegador, rota):
+    """A excecao e de UMA rota. Catalogo, carrinho e checkout nao mudam."""
+    csp = navegador.get(rota).headers.get("Content-Security-Policy", "")
+    assert "script-src 'none'" in csp
+
+
+def test_projeto_final_nao_tem_script_nem_estilo_escrito_no_html(navegador):
+    """Com `script-src 'self'` sem 'unsafe-inline', script escrito no
+    HTML nao executa e estilo escrito no HTML e descartado.
+
+    Este teste existe porque a falha seria SILENCIOSA: a pagina carrega,
+    o servidor nao registra erro nenhum, e so o navegador do professor
+    mostraria o resultado quebrado.
+    """
+    html = navegador.get("/projeto-final").get_data(as_text=True)
+
+    assert 'style="' not in html
+
+    # O unico <script> da pagina e o de src externo, sem corpo.
+    scripts = re.findall(r"<script[^>]*>", html)
+    assert len(scripts) == 1
+    assert "src=" in scripts[0]
+    assert "<script>" not in html
+
+
+def test_projeto_final_explica_o_que_fazer_sem_javascript(navegador):
+    """Com o JavaScript desligado, a pagina nao pode ficar em branco."""
+    html = navegador.get("/projeto-final").get_data(as_text=True)
+
+    assert "<noscript>" in html
+    # E precisa dizer que a LOJA funciona sem JavaScript, para ninguem
+    # concluir que o site inteiro depende dele.
+    assert "não usa JavaScript nenhum" in html
+
+
+def test_link_do_projeto_final_esta_no_rodape_da_loja(navegador):
+    html = navegador.get("/").get_data(as_text=True)
+    assert 'href="/projeto-final"' in html

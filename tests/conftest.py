@@ -12,6 +12,7 @@ ou o valor de TEST_DATABASE_URL. Crie-o uma vez com:
 """
 
 import os
+import re
 from decimal import Decimal
 
 import pytest
@@ -27,6 +28,13 @@ from app import (
     db,
     normalizar_url,
 )
+
+# Credenciais dos testes. Sao fixtures, nao segredo: o banco de teste e
+# derrubado e recriado a cada execucao.
+SENHA_PADRAO = "senha-de-teste-123"
+EMAIL_GESTOR = "gestor@exemplo.com"
+EMAIL_CLIENTE = "ana@exemplo.com"
+EMAIL_OUTRO = "bruno@exemplo.com"
 
 load_dotenv()
 
@@ -122,3 +130,99 @@ def catalogo(contexto) -> dict[str, Produto]:
     db.session.commit()
 
     return {"farto": farto, "escasso": escasso}
+
+
+# =====================================================================
+# Fixtures do Projeto Final
+# =====================================================================
+
+@pytest.fixture
+def navegador(aplicacao, contexto):
+    """Cliente HTTP de teste, com sessao e cookies proprios."""
+    return aplicacao.test_client()
+
+
+def token_csrf_de(html: str) -> str:
+    """Extrai o token do campo escondido de um formulario renderizado."""
+    achado = re.search(r'name="_csrf" value="([^"]+)"', html)
+    assert achado, "o formulario deveria trazer o campo _csrf"
+    return achado.group(1)
+
+
+@pytest.fixture
+def entrar(navegador):
+    """Devolve uma funcao que faz login de verdade, pelo formulario.
+
+    Passa pelo fluxo completo — GET /login para pegar o token, POST com o
+    token — em vez de escrever `cliente_id` direto na sessao. Login
+    fabricado na sessao testaria a autorizacao e deixaria a autenticacao
+    de fora, que e metade do que se quer provar aqui.
+    """
+
+    def _entrar(email: str, senha: str = SENHA_PADRAO):
+        pagina = navegador.get("/login").get_data(as_text=True)
+        resposta = navegador.post(
+            "/login",
+            data={
+                "email": email,
+                "senha": senha,
+                "_csrf": token_csrf_de(pagina),
+            },
+        )
+        assert resposta.status_code == 302, (
+            f"login de {email} falhou: {resposta.status_code}"
+        )
+        return resposta
+
+    return _entrar
+
+
+@pytest.fixture
+def token_da_sessao(navegador):
+    """O token CSRF da sessao atual, para o cabecalho X-CSRF-Token."""
+
+    def _token() -> str:
+        # Garante que a sessao existe antes de ler o token.
+        navegador.get("/")
+        with navegador.session_transaction() as sessao:
+            return sessao.get("_csrf", "")
+
+    return _token
+
+
+@pytest.fixture
+def gestor(aplicacao, contexto) -> Cliente:
+    """Um cliente cujo e-mail esta em ADMIN_EMAILS.
+
+    Mexe na config da app, que e de escopo de sessao, e por isso restaura
+    o valor anterior no teardown — senao o primeiro teste que pedisse
+    esta fixture transformaria o gestor em permanente para todos os
+    outros, e o teste de 403 passaria a falhar por contagio.
+    """
+    anterior = aplicacao.config.get("ADMIN_EMAILS")
+    aplicacao.config["ADMIN_EMAILS"] = frozenset({EMAIL_GESTOR})
+
+    registro = Cliente(
+        nome="Gestor Teste",
+        email=EMAIL_GESTOR,
+        senha_hash=generate_password_hash(SENHA_PADRAO),
+    )
+    db.session.add(registro)
+    db.session.commit()
+
+    yield registro
+
+    aplicacao.config["ADMIN_EMAILS"] = anterior
+
+
+@pytest.fixture
+def outro_cliente(contexto) -> Cliente:
+    """Um segundo cliente, para provar o isolamento entre contas."""
+    registro = Cliente(
+        nome="Bruno Teste",
+        email=EMAIL_OUTRO,
+        senha_hash=generate_password_hash(SENHA_PADRAO),
+    )
+    db.session.add(registro)
+    db.session.commit()
+    return registro
