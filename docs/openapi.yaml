@@ -1,0 +1,637 @@
+# =====================================================================
+# Torra & Terra — API JSON do Projeto Final
+# Especificacao OpenAPI 3.0.3
+#
+# FACAMP · Tratamento e Armazenamento da Informacao
+# Professor: Nivaldo T. Marcusso · Grupo 3
+#
+# Validar:  npx @redocly/cli lint docs/openapi.yaml
+# Ver:      cole em https://editor.swagger.io
+#
+# A documentacao em prosa, com o porque de cada decisao, esta em
+# docs/api.md. Este arquivo e a especificacao formal.
+# =====================================================================
+openapi: 3.0.3
+
+info:
+  title: Torra & Terra — API do Projeto Final
+  version: "1.0.0"
+  description: |
+    API JSON da loja de cafés especiais Torra & Terra.
+
+    A loja é renderizada no servidor e não precisaria de API para
+    funcionar. Esta existe para três coisas: alimentar os indicadores ao
+    vivo do site do Projeto Final, oferecer um health check que também
+    verifica o banco, e expor os indicadores do painel em JSON.
+
+    **Dinheiro é string decimal, nunca número JSON.** `"148.00"`, não
+    `148.0`. Um número JSON é um float IEEE 754 — o mesmo tipo que o
+    projeto rejeitou no banco por não representar 0,10 exatamente.
+
+    **Autenticação por cookie de sessão**, a mesma da loja. Não há token
+    de API: a API serve a própria aplicação e o gestor, não integrações
+    de terceiros.
+  contact:
+    name: "Grupo 3 — Felipe Furlan, Henrique Biruel, Henrique Palorca"
+  license:
+    name: MIT
+    url: https://github.com/hick12/projeto-nivaldo/blob/main/LICENSE
+
+servers:
+  - url: https://nivaldo.felipefurlan.com.br
+    description: Produção (Railway)
+  - url: http://localhost:5000
+    description: Desenvolvimento local
+
+tags:
+  - name: Infraestrutura
+    description: Estado da aplicação
+  - name: Catálogo
+    description: Cafés e regiões produtoras. Público
+  - name: Pedidos
+    description: Histórico do cliente e gestão pelo gestor
+  - name: Indicadores
+    description: Os indicadores do painel
+
+paths:
+
+  /health:
+    get:
+      tags: [Infraestrutura]
+      summary: Estado da aplicação e do banco
+      description: |
+        Executa `SELECT 1` no PostgreSQL. Um health check que só responde
+        "o processo está vivo" mente no caso mais comum de queda:
+        aplicação de pé e banco inacessível.
+
+        Nenhum detalhe de configuração sai daqui — nem URL do banco, nem
+        versão do servidor, nem mensagem do driver.
+      operationId: health
+      security: []
+      responses:
+        "200":
+          description: Aplicação e banco respondendo
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, banco]
+                properties:
+                  status: { type: string, example: ok }
+                  banco:  { type: string, example: ok }
+        "503":
+          description: |
+            Banco inacessível, ou aplicação subiu sem a configuração
+            obrigatória de produção.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      status: { type: string, example: degradado }
+                      banco:  { type: string, example: falha }
+                  - type: object
+                    properties:
+                      erro:
+                        type: string
+                        example: Aplicação sem configuração completa.
+                      variaveis_ausentes:
+                        type: array
+                        items: { type: string }
+                        example: [SECRET_KEY]
+
+  /api/categorias:
+    get:
+      tags: [Catálogo]
+      summary: As regiões produtoras
+      description: |
+        `nome` é a denominação de origem e `regiao` é o estado. Duas
+        categorias ficam em Minas Gerais, e os indicadores que agrupam
+        por `regiao` somam as duas.
+      operationId: listarCategorias
+      security: []
+      responses:
+        "200":
+          description: Lista completa
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer, example: 4 }
+                  categorias:
+                    type: array
+                    items: { $ref: "#/components/schemas/Categoria" }
+
+  /api/produtos:
+    get:
+      tags: [Catálogo]
+      summary: O catálogo
+      description: |
+        Ordenado por nome. O filtro por categoria usa o índice
+        `idx_produtos_categoria`, o mesmo da página inicial.
+
+        Categoria inexistente devolve 200 com lista vazia, não 404: a
+        consulta é válida e o resultado é "nenhum café".
+      operationId: listarProdutos
+      security: []
+      parameters:
+        - name: categoria
+          in: query
+          required: false
+          description: Filtra por `categoria_id`
+          schema: { type: integer, minimum: 1, example: 4 }
+      responses:
+        "200":
+          description: Cafés encontrados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:     { type: integer, example: 3 }
+                  categoria:
+                    type: integer
+                    nullable: true
+                    example: 4
+                  produtos:
+                    type: array
+                    items: { $ref: "#/components/schemas/Produto" }
+
+  /api/produtos/{id}:
+    get:
+      tags: [Catálogo]
+      summary: Um café
+      operationId: obterProduto
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/IdProduto"
+      responses:
+        "200":
+          description: O café
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Produto" }
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+
+  /api/pedidos:
+    get:
+      tags: [Pedidos]
+      summary: Os pedidos do próprio cliente
+      description: |
+        O filtro vem da **sessão**, nunca da URL. Se o id do cliente
+        fosse parâmetro, bastaria trocar o número para ler o histórico de
+        compras de qualquer pessoa — a falha de controle de acesso mais
+        comum em API REST.
+
+        Cada item traz a `moagem` escolhida na compra e o
+        `preco_unitario` congelado da época.
+      operationId: listarMeusPedidos
+      responses:
+        "200":
+          description: Histórico do cliente logado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cliente_id: { type: integer, example: 3 }
+                  total:      { type: integer, example: 1 }
+                  pedidos:
+                    type: array
+                    items: { $ref: "#/components/schemas/Pedido" }
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+
+  /api/dashboard:
+    get:
+      tags: [Indicadores]
+      summary: Os sete indicadores do painel
+      description: |
+        As mesmas consultas de `SQL/dashboard.sql` que a tela `/painel`
+        executa. A tela e esta rota não podem divergir porque chamam a
+        mesma função.
+
+        `conciliacao.divergentes` é o indicador central do trabalho:
+        conta os pedidos cujo `total` difere da soma de
+        `quantidade × preco_unitario` dos itens. Precisa dar zero.
+      operationId: obterDashboard
+      parameters:
+        - $ref: "#/components/parameters/Dias"
+      responses:
+        "200":
+          description: Indicadores do período
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Dashboard" }
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+        "403":
+          $ref: "#/components/responses/SemPermissao"
+
+  /api/pedidos/{id}/status:
+    patch:
+      tags: [Pedidos]
+      summary: Muda o status de um pedido
+      description: |
+        Transições permitidas:
+
+        ```
+        CRIADO ──> PAGO ──> ENVIADO
+           │         │
+           └──> CANCELADO <┘
+        ```
+
+        `ENVIADO` e `CANCELADO` são terminais.
+
+        **Cancelar devolve o estoque** dos itens, na mesma transação que
+        muda o status, com `SELECT ... FOR UPDATE` nos produtos — igual
+        ao checkout. Ou as duas coisas acontecem, ou nenhuma.
+
+        `PATCH` e não `PUT` porque altera um campo do recurso, não o
+        substitui.
+      operationId: mudarStatusPedido
+      parameters:
+        - $ref: "#/components/parameters/IdPedido"
+        - $ref: "#/components/parameters/TokenCsrf"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [CRIADO, PAGO, ENVIADO, CANCELADO]
+                  example: PAGO
+            examples:
+              pagar:
+                summary: Confirmar pagamento
+                value: { status: PAGO }
+              cancelar:
+                summary: Cancelar e devolver o estoque
+                value: { status: CANCELADO }
+      responses:
+        "200":
+          description: Status alterado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pedido_id:       { type: integer, example: 17 }
+                  status_anterior: { type: string,  example: CRIADO }
+                  status_atual:    { type: string,  example: PAGO }
+                  unidades_devolvidas_ao_estoque:
+                    type: integer
+                    description: Zero fora do cancelamento
+                    example: 0
+        "400":
+          description: Token CSRF ausente/inválido, ou campo `status` faltando
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+        "401":
+          $ref: "#/components/responses/NaoAutenticado"
+        "403":
+          $ref: "#/components/responses/SemPermissao"
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+        "409":
+          description: |
+            Conflito com o estado atual do pedido. A requisição está bem
+            formada e o gestor tem permissão — o que impede é o estado.
+            Por isso 409 e não 400.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+              examples:
+                transicaoProibida:
+                  value:
+                    erro: >-
+                      Não é possível ir de CRIADO para ENVIADO. De CRIADO
+                      só dá para ir para PAGO ou CANCELADO.
+                estadoFinal:
+                  value:
+                    erro: >-
+                      O pedido #1 está em ENVIADO, que é um estado final.
+                      Não há mudança possível a partir dele.
+
+  /api/resumo:
+    get:
+      tags: [Indicadores]
+      summary: Agregados públicos, para os indicadores ao vivo
+      description: |
+        Rota aberta, e o que ela devolve foi escolhido com cuidado.
+
+        **Sai:** contagem de pedidos, unidades vendidas, cafés no
+        catálogo, participação por região em porcentagem e a conciliação
+        como "X de X".
+
+        **Não sai:** faturamento em reais, ticket médio, nome ou e-mail
+        de cliente, id de pedido, nem qualquer valor que permita deduzir
+        o faturamento. A participação sai em porcentagem justamente para
+        a página desenhar o gráfico sem vazar valor absoluto — 100% de um
+        número desconhecido não revela o número.
+      operationId: obterResumo
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Dias"
+      responses:
+        "200":
+          description: Agregados do período
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Resumo" }
+
+components:
+
+  securitySchemes:
+    sessao:
+      type: apiKey
+      in: cookie
+      name: session
+      description: |
+        Cookie de sessão assinado pelo Flask, obtido em `POST /login`.
+        `HttpOnly`, `SameSite=Lax` e `Secure` em produção.
+
+  parameters:
+
+    IdProduto:
+      name: id
+      in: path
+      required: true
+      description: Id do café
+      schema: { type: integer, minimum: 1, example: 11 }
+
+    IdPedido:
+      name: id
+      in: path
+      required: true
+      description: Id do pedido
+      schema: { type: integer, minimum: 1, example: 17 }
+
+    Dias:
+      name: dias
+      in: query
+      required: false
+      description: |
+        Janela do período. Limitado a 1–365; valor ausente ou inválido
+        cai em 30. O teto existe porque `?dias=99999999` faria o
+        planejador desprezar o índice e varrer `pedidos` inteiro.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 365
+        default: 30
+
+    TokenCsrf:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      description: |
+        O mesmo token dos formulários da loja, só muda o envelope. Para
+        obtê-lo, faça `GET /login` e leia o `value` do campo
+        `name="_csrf"`.
+      schema: { type: string }
+
+  responses:
+
+    NaoAutenticado:
+      description: Sem sessão. Identifique-se
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+          example: { erro: "Faça login para acessar este recurso." }
+
+    SemPermissao:
+      description: Autenticado, mas não é gestor
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+          example: { erro: "Acesso restrito ao gestor da loja." }
+
+    NaoEncontrado:
+      description: O recurso não existe
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+          example: { erro: "Café #9999 não encontrado." }
+
+  schemas:
+
+    Erro:
+      type: object
+      required: [erro]
+      properties:
+        erro:
+          type: string
+          description: Mensagem em português, legível por pessoas
+      description: O formato único de erro da API inteira
+
+    Dinheiro:
+      type: string
+      pattern: '^-?\d+\.\d{2}$'
+      description: |
+        Valor decimal como string, com duas casas. **Nunca número
+        JSON**: número JSON é float IEEE 754, que não representa 0,10
+        exatamente — o mesmo motivo de o banco usar `NUMERIC(10,2)` e
+        não `FLOAT`.
+      example: "148.00"
+
+    Categoria:
+      type: object
+      properties:
+        id:        { type: integer, example: 4 }
+        nome:
+          type: string
+          description: Denominação de origem
+          example: Chapada Diamantina
+        regiao:
+          type: string
+          description: Estado
+          example: Bahia
+        descricao: { type: string, nullable: true }
+        cafes:
+          type: integer
+          description: Quantos cafés desta categoria no catálogo
+          example: 3
+
+    Produto:
+      type: object
+      properties:
+        id:            { type: integer, example: 11 }
+        nome:          { type: string,  example: Chapada Geisha }
+        descricao:     { type: string,  nullable: true }
+        preco:         { $ref: "#/components/schemas/Dinheiro" }
+        estoque:
+          type: integer
+          minimum: 0
+          description: Constraint `ck_produtos_estoque` garante o mínimo
+          example: 1
+        categoria_id:  { type: integer, example: 4 }
+        categoria:     { type: string,  nullable: true, example: Chapada Diamantina }
+        regiao:        { type: string,  nullable: true, example: Bahia }
+        torra:
+          type: string
+          enum: [CLARA, MEDIA, ESCURA]
+          description: Constraint `ck_produtos_torra`
+        nota_sensorial: { type: string, nullable: true }
+        pontuacao_sca:
+          type: string
+          nullable: true
+          description: |
+            `NUMERIC(4,2)` como string. Entre 80 e 100 pela constraint
+            `ck_produtos_sca` — é a definição de café especial pela SCA.
+          example: "91.00"
+        peso_g:        { type: integer, example: 250 }
+
+    ItemPedido:
+      type: object
+      description: |
+        Entidade de verdade, não tabela de ligação: carrega `moagem` e
+        `preco_unitario` próprios. O mesmo café pode aparecer duas vezes
+        no pedido em moagens diferentes.
+      properties:
+        produto_id:     { type: integer, example: 10 }
+        nome:           { type: string,  example: Piata Altitude }
+        quantidade:
+          type: integer
+          minimum: 1
+          description: Constraint `ck_itens_quantidade`
+          example: 2
+        preco_unitario:
+          allOf:
+            - $ref: "#/components/schemas/Dinheiro"
+          description: |
+            O preço **da época da compra**, congelado. Reajuste posterior
+            do produto não altera o pedido antigo.
+        moagem:
+          type: string
+          enum: [GRAO, MEDIA, FINA]
+          description: |
+            Escolhida na compra, não no cadastro do café. Constraint
+            `ck_itens_moagem`.
+        subtotal: { $ref: "#/components/schemas/Dinheiro" }
+
+    Pedido:
+      type: object
+      properties:
+        id:     { type: integer, example: 17 }
+        status:
+          type: string
+          enum: [CRIADO, PAGO, ENVIADO, CANCELADO]
+          description: Constraint `ck_pedidos_status`
+        total:  { $ref: "#/components/schemas/Dinheiro" }
+        criado_em:
+          type: string
+          format: date-time
+          example: "2026-11-18T14:31:00"
+        itens:
+          type: array
+          items: { $ref: "#/components/schemas/ItemPedido" }
+
+    Dashboard:
+      type: object
+      properties:
+        periodo_dias: { type: integer, example: 30 }
+        gerado_em:    { type: string, format: date-time }
+        faturamento:
+          type: object
+          properties:
+            pedidos:    { type: integer, example: 34 }
+            valor:      { $ref: "#/components/schemas/Dinheiro" }
+            observacao: { type: string }
+        ticket_medio: { $ref: "#/components/schemas/Dinheiro" }
+        vendas_por_regiao:
+          type: array
+          items:
+            type: object
+            properties:
+              regiao:      { type: string, example: Minas Gerais }
+              pedidos:     { type: integer, example: 28 }
+              unidades:    { type: integer, example: 66 }
+              faturamento: { $ref: "#/components/schemas/Dinheiro" }
+              participacao_percentual: { type: string, example: "59.6" }
+        top_cafes:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            properties:
+              id:          { type: integer }
+              nome:        { type: string }
+              regiao:      { type: string }
+              unidades:    { type: integer }
+              faturamento: { $ref: "#/components/schemas/Dinheiro" }
+              moagem_preferida:
+                type: string
+                nullable: true
+                enum: [GRAO, MEDIA, FINA, null]
+                description: |
+                  A moagem mais pedida deste café no período. Só existe
+                  como pergunta porque `moagem` mora no item e não no
+                  produto.
+        estoque_critico:
+          type: object
+          properties:
+            limite: { type: integer, example: 5 }
+            cafes:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:      { type: integer }
+                  nome:    { type: string }
+                  regiao:  { type: string }
+                  estoque: { type: integer }
+        pedidos_por_status:
+          type: array
+          minItems: 4
+          maxItems: 4
+          description: |
+            Sempre os quatro status, mesmo os com zero pedido. Gráfico
+            com número de barras variável engana quem olha.
+          items:
+            type: object
+            properties:
+              status:  { type: string, enum: [CRIADO, PAGO, ENVIADO, CANCELADO] }
+              pedidos: { type: integer }
+              valor:   { $ref: "#/components/schemas/Dinheiro" }
+        conciliacao:
+          type: object
+          description: |
+            O indicador central do trabalho. `divergentes` precisa ser 0.
+          properties:
+            pedidos:     { type: integer, example: 40 }
+            conciliados: { type: integer, example: 40 }
+            divergentes: { type: integer, example: 0 }
+            observacao:  { type: string }
+
+    Resumo:
+      type: object
+      properties:
+        periodo_dias:       { type: integer, example: 30 }
+        gerado_em:          { type: string, format: date-time }
+        pedidos_no_periodo: { type: integer, example: 34 }
+        cafes_vendidos:     { type: integer, example: 109 }
+        cafes_no_catalogo:  { type: integer, example: 12 }
+        participacao_por_regiao:
+          type: array
+          items:
+            type: object
+            properties:
+              regiao:     { type: string, example: Minas Gerais }
+              percentual: { type: number, format: float, example: 59.6 }
+        conciliacao:
+          type: object
+          properties:
+            pedidos:     { type: integer, example: 40 }
+            conciliados: { type: integer, example: 40 }
+
+security:
+  - sessao: []

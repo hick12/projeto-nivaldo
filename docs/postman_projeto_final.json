@@ -1,0 +1,597 @@
+{
+  "info": {
+    "name": "Torra & Terra — Projeto Final",
+    "_postman_id": "a7f3c1e0-9d44-4b2a-8e51-torra2026final",
+    "description": "API JSON da loja Torra & Terra.\n\nFACAMP · Tratamento e Armazenamento da Informacao · Prof. Nivaldo T. Marcusso\nGrupo 3: Felipe Furlan, Henrique Biruel, Henrique Palorca\n\n## Como usar\n\n1. Escolha o ambiente na variavel `base_url` (producao ou local).\n2. Rode as requisicoes de **1. Publico** — nenhuma precisa de login.\n3. Rode **2. Login do cliente** e depois `GET /api/pedidos`.\n4. Para o painel, rode **3. Login do gestor** com um e-mail que esteja em `ADMIN_EMAILS`.\n5. `PATCH /api/pedidos/:id/status` precisa do cabecalho `X-CSRF-Token`. O login ja guarda o token na variavel `csrf_token`, e a requisicao o envia sozinha.\n\n## Autenticacao\n\nPor cookie de sessao, igual a loja. O Postman guarda o cookie automaticamente depois do login — nao ha token de API.\n\n## Dinheiro\n\nSempre string decimal (`\"148.00\"`), nunca numero JSON. Numero JSON e float IEEE 754, que nao representa 0,10 exatamente.\n\nDocumentacao completa: `docs/api.md`. Especificacao: `docs/openapi.yaml`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://nivaldo.felipefurlan.com.br",
+      "type": "string",
+      "description": "Troque para http://localhost:5000 para rodar local"
+    },
+    {
+      "key": "email_cliente",
+      "value": "ana.braganca@exemplo.com",
+      "type": "string",
+      "description": "Cliente ficticio criado por `flask seed-demo`"
+    },
+    {
+      "key": "senha_cliente",
+      "value": "demo-torra-e-terra-2026",
+      "type": "string",
+      "description": "Senha dos clientes de demonstracao. Trocavel pela variavel de ambiente SENHA_DEMO"
+    },
+    {
+      "key": "email_gestor",
+      "value": "gestor.demo@exemplo.com",
+      "type": "string",
+      "description": "Precisa estar listado em ADMIN_EMAILS no provedor"
+    },
+    {
+      "key": "senha_gestor",
+      "value": "",
+      "type": "string",
+      "description": "Preencha com a senha que voce cadastrou em /cadastro"
+    },
+    {
+      "key": "csrf_token",
+      "value": "",
+      "type": "string",
+      "description": "Preenchido automaticamente pelos scripts de login"
+    },
+    {
+      "key": "pedido_id",
+      "value": "1",
+      "type": "string",
+      "description": "Id do pedido usado no PATCH de status"
+    }
+  ],
+
+  "item": [
+    {
+      "name": "1. Publico",
+      "description": "Nenhuma destas precisa de login.",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] },
+            "description": "Executa SELECT 1 no banco. 200 com {\"status\":\"ok\",\"banco\":\"ok\"}, ou 503 se o banco nao responder.\n\nUm health check que so diz 'o processo esta vivo' mente no caso mais comum de queda: aplicacao de pe e banco inacessivel."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('banco ok', () => pm.expect(pm.response.json().banco).to.eql('ok'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/categorias",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/categorias", "host": ["{{base_url}}"], "path": ["api", "categorias"] },
+            "description": "As 4 regioes produtoras, com a contagem de cafes de cada uma.\n\n`nome` e a denominacao de origem, `regiao` e o estado. Duas categorias ficam em Minas Gerais."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('tem 4 categorias', () => pm.expect(pm.response.json().total).to.eql(4));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/produtos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/produtos", "host": ["{{base_url}}"], "path": ["api", "produtos"] },
+            "description": "O catalogo inteiro, ordenado por nome. 12 cafes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json().produtos[0];",
+                  "pm.test('preco e string decimal, nao float', () => {",
+                  "  pm.expect(p.preco).to.be.a('string');",
+                  "  pm.expect(p.preco).to.match(/^\\d+\\.\\d{2}$/);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/produtos?categoria=4",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/produtos?categoria=4",
+              "host": ["{{base_url}}"],
+              "path": ["api", "produtos"],
+              "query": [{ "key": "categoria", "value": "4", "description": "Chapada Diamantina" }]
+            },
+            "description": "Filtro por regiao. Usa o indice idx_produtos_categoria, o mesmo da pagina inicial."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('so cafes da categoria 4', () => {",
+                  "  pm.response.json().produtos.forEach(p => pm.expect(p.categoria_id).to.eql(4));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/produtos/11",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/produtos/11", "host": ["{{base_url}}"], "path": ["api", "produtos", "11"] },
+            "description": "O Chapada Geisha — o cafe com estoque 1, deixado assim de proposito para a demonstracao do rollback."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('pontuacao SCA entre 80 e 100', () => {",
+                  "  const sca = parseFloat(pm.response.json().pontuacao_sca);",
+                  "  pm.expect(sca).to.be.within(80, 100);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/produtos/9999 — 404 esperado",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/produtos/9999", "host": ["{{base_url}}"], "path": ["api", "produtos", "9999"] },
+            "description": "Cafe inexistente. Deve dar 404 com {\"erro\": \"...\"}, nunca 500."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 404', () => pm.response.to.have.status(404));",
+                  "pm.test('formato de erro da API', () => pm.expect(pm.response.json()).to.have.property('erro'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/resumo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/resumo?dias=30",
+              "host": ["{{base_url}}"],
+              "path": ["api", "resumo"],
+              "query": [{ "key": "dias", "value": "30" }]
+            },
+            "description": "Agregados publicos, usados pelos indicadores ao vivo do /projeto-final.\n\nNAO devolve faturamento em reais, ticket medio, nome nem e-mail de cliente. A participacao por regiao sai em PORCENTAGEM justamente para o grafico funcionar sem vazar valor absoluto."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json();",
+                  "pm.test('nao vaza faturamento', () => {",
+                  "  pm.expect(JSON.stringify(d)).to.not.include('faturamento');",
+                  "  pm.expect(d).to.not.have.property('ticket_medio');",
+                  "});",
+                  "pm.test('conciliacao fecha', () => {",
+                  "  pm.expect(d.conciliacao.conciliados).to.eql(d.conciliacao.pedidos);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/dashboard sem login — 401 esperado",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/dashboard", "host": ["{{base_url}}"], "path": ["api", "dashboard"] },
+            "description": "Rode ANTES de qualquer login, ou depois de limpar os cookies. Deve dar 401 — e o controle de acesso funcionando.\n\n401 e nao 403: 401 significa 'identifique-se', 403 significa 'eu sei quem voce e e a resposta e nao'."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 ou 403 — nunca 200', () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "2. Cliente logado",
+      "item": [
+        {
+          "name": "POST /login (cliente)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "email", "value": "{{email_cliente}}" },
+                { "key": "senha", "value": "{{senha_cliente}}" },
+                { "key": "_csrf", "value": "{{csrf_token}}" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}/login", "host": ["{{base_url}}"], "path": ["login"] },
+            "description": "Login de um cliente ficticio criado por `flask seed-demo`.\n\nO script de pre-requisicao busca GET /login e extrai o token CSRF do campo escondido — sem ele o POST e barrado com 400."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Busca a pagina de login e extrai o token CSRF do campo",
+                  "// escondido. O cookie de sessao vem na mesma resposta.",
+                  "pm.sendRequest({",
+                  "  url: pm.variables.get('base_url') + '/login',",
+                  "  method: 'GET'",
+                  "}, (erro, resposta) => {",
+                  "  if (erro) { return console.error(erro); }",
+                  "  const achado = /name=\"_csrf\" value=\"([^\"]+)\"/.exec(resposta.text());",
+                  "  if (achado) {",
+                  "    pm.collectionVariables.set('csrf_token', achado[1]);",
+                  "  } else {",
+                  "    console.error('token CSRF nao encontrado no HTML de /login');",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('302 — logou e redirecionou', () => pm.response.to.have.status(302));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/pedidos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/pedidos", "host": ["{{base_url}}"], "path": ["api", "pedidos"] },
+            "description": "So os pedidos DO PROPRIO cliente. O filtro vem da sessao, nunca da URL — nao existe `?cliente=7`.\n\nRepare nos itens: cada um traz a `moagem` escolhida na compra e o `preco_unitario` congelado da epoca."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json();",
+                  "pm.test('todo pedido e do cliente da sessao', () => {",
+                  "  pm.expect(d).to.have.property('cliente_id');",
+                  "});",
+                  "if (d.pedidos.length) {",
+                  "  pm.collectionVariables.set('pedido_id', String(d.pedidos[0].id));",
+                  "  pm.test('total do pedido bate com a soma dos itens', () => {",
+                  "    const p = d.pedidos[0];",
+                  "    const soma = p.itens.reduce((t, i) => t + Math.round(parseFloat(i.subtotal) * 100), 0);",
+                  "    pm.expect(soma).to.eql(Math.round(parseFloat(p.total) * 100));",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "3. Gestor",
+      "description": "Precisa de uma conta cadastrada em /cadastro cujo e-mail esteja na variavel ADMIN_EMAILS do provedor.",
+      "item": [
+        {
+          "name": "POST /login (gestor)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "email", "value": "{{email_gestor}}" },
+                { "key": "senha", "value": "{{senha_gestor}}" },
+                { "key": "_csrf", "value": "{{csrf_token}}" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}/login", "host": ["{{base_url}}"], "path": ["login"] },
+            "description": "Preencha a variavel `senha_gestor` antes de rodar."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.sendRequest({",
+                  "  url: pm.variables.get('base_url') + '/login',",
+                  "  method: 'GET'",
+                  "}, (erro, resposta) => {",
+                  "  if (erro) { return console.error(erro); }",
+                  "  const achado = /name=\"_csrf\" value=\"([^\"]+)\"/.exec(resposta.text());",
+                  "  if (achado) { pm.collectionVariables.set('csrf_token', achado[1]); }",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('302 — logou', () => pm.response.to.have.status(302));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/dashboard?dias=30",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/dashboard?dias=30",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dashboard"],
+              "query": [{ "key": "dias", "value": "30", "description": "1 a 365; invalido cai em 30" }]
+            },
+            "description": "Os sete indicadores do painel, pelas consultas de SQL/dashboard.sql.\n\n`conciliacao.divergentes` e o indicador central do trabalho: conta pedidos cujo total difere da soma dos itens. Precisa dar ZERO."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json();",
+                  "pm.test('CONCILIACAO: zero divergencias', () => {",
+                  "  pm.expect(d.conciliacao.divergentes).to.eql(0);",
+                  "});",
+                  "pm.test('os 4 status sempre aparecem', () => {",
+                  "  pm.expect(d.pedidos_por_status).to.have.lengthOf(4);",
+                  "});",
+                  "pm.test('top cafes tem no maximo 5', () => {",
+                  "  pm.expect(d.top_cafes.length).to.be.at.most(5);",
+                  "});",
+                  "pm.test('participacao por regiao soma ~100%', () => {",
+                  "  if (!d.vendas_por_regiao.length) { return; }",
+                  "  const soma = d.vendas_por_regiao.reduce((t, r) => t + parseFloat(r.participacao_percentual), 0);",
+                  "  pm.expect(soma).to.be.closeTo(100, 0.5);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/dashboard?dias=7",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/dashboard?dias=7",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dashboard"],
+              "query": [{ "key": "dias", "value": "7" }]
+            },
+            "description": "Mesma consulta, janela menor. Compare o faturamento com o de 30 dias: o filtro de periodo esta funcionando se o numero for menor ou igual."
+          }
+        },
+        {
+          "name": "PATCH /api/pedidos/:id/status — PAGO",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrf_token}}",
+                "description": "Mesmo token dos formularios. Sem ele: 400."
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PAGO\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/pedidos/{{pedido_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "pedidos", "{{pedido_id}}", "status"]
+            },
+            "description": "Transicao CRIADO -> PAGO.\n\nSo funciona se o pedido estiver em CRIADO. Se ja estiver em PAGO, ENVIADO ou CANCELADO, a resposta e 409 — conflito com o estado atual, nao erro de sintaxe.\n\nAjuste a variavel `pedido_id` para um pedido em CRIADO (veja a lista no /painel)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 ou 409 — nunca 500', () => pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
+                  "if (pm.response.code === 200) {",
+                  "  const d = pm.response.json();",
+                  "  pm.test('o antes e o depois vem na resposta', () => {",
+                  "    pm.expect(d).to.have.property('status_anterior');",
+                  "    pm.expect(d.status_atual).to.eql('PAGO');",
+                  "  });",
+                  "} else {",
+                  "  pm.test('409 explica o motivo', () => pm.expect(pm.response.json().erro).to.be.a('string'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH status — CANCELADO (devolve estoque)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-CSRF-Token", "value": "{{csrf_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"CANCELADO\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/pedidos/{{pedido_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "pedidos", "{{pedido_id}}", "status"]
+            },
+            "description": "Cancelamento. Devolve o estoque dos itens na MESMA transacao que muda o status, com SELECT ... FOR UPDATE nos produtos — igual ao checkout.\n\n`unidades_devolvidas_ao_estoque` na resposta diz quantas unidades voltaram ao saldo. Confira depois em GET /api/produtos/:id."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 ou 409', () => pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('devolveu estoque', () => {",
+                  "    pm.expect(pm.response.json().unidades_devolvidas_ao_estoque).to.be.above(0);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH sem X-CSRF-Token — 400 esperado",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PAGO\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/pedidos/{{pedido_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "pedidos", "{{pedido_id}}", "status"]
+            },
+            "description": "A mesma requisicao, sem o cabecalho. Deve dar 400 — a protecao CSRF vale para a API exatamente como vale para os formularios.\n\nO log do servidor registra `evento=csrf_barrado`, com o TAMANHO do token enviado, nunca o valor."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 400', () => pm.response.to.have.status(400));",
+                  "pm.test('a mensagem diz o que fazer', () => {",
+                  "  pm.expect(pm.response.json().erro).to.include('X-CSRF-Token');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH pedido inexistente — 404 esperado",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-CSRF-Token", "value": "{{csrf_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PAGO\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/pedidos/999999/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "pedidos", "999999", "status"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
