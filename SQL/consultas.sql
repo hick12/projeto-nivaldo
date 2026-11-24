@@ -254,3 +254,189 @@ WHERE i.pedido_id = 1;
 -- Limpeza:
 -- DELETE FROM produtos WHERE nome LIKE 'Cafe de carga %';
 -- ANALYZE produtos;
+
+
+-- =====================================================================
+-- 5. PROJETO FINAL — o indice novo: idx_pedidos_criado_em
+--
+-- O painel de indicadores (SQL/dashboard.sql) tem sete consultas e TODAS
+-- comecam filtrando o periodo:
+--
+--     WHERE criado_em >= CURRENT_TIMESTAMP - make_interval(days => :dias)
+--
+-- A lista de pedidos recentes, logo abaixo dos cards, ordena pelo mesmo
+-- campo: ORDER BY criado_em DESC LIMIT 20.
+--
+-- Este e o indice que o Projeto Final acrescentou:
+--
+--     CREATE INDEX idx_pedidos_criado_em ON pedidos(criado_em DESC);
+--
+-- Em producao ele e aplicado por SQL/migracao_projeto_final.sql, NUNCA
+-- rodando o schema.sql — que comeca com DROP TABLE.
+--
+-- ---------------------------------------------------------------------
+-- 5.1 Como refazer a medicao
+--
+-- As duas consultas de referencia:
+-- ---------------------------------------------------------------------
+
+-- (a) o card de faturamento do painel
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT COUNT(*) AS pedidos, COALESCE(SUM(total), 0) AS faturamento
+FROM pedidos
+WHERE criado_em >= CURRENT_TIMESTAMP - make_interval(days => 30)
+  AND status <> 'CANCELADO';
+
+-- (b) a lista de pedidos recentes
+EXPLAIN ANALYZE
+SELECT p.id, p.status, p.total, p.criado_em
+FROM pedidos p
+ORDER BY p.criado_em DESC
+LIMIT 20;
+
+-- Para comparar antes e depois:
+--
+--     DROP INDEX idx_pedidos_criado_em;  ANALYZE pedidos;   -- antes
+--     (rode (a) e (b))
+--     CREATE INDEX idx_pedidos_criado_em ON pedidos(criado_em DESC);
+--     ANALYZE pedidos;                                      -- depois
+--     (rode (a) e (b) de novo)
+--
+-- O ANALYZE nao e opcional: sem atualizar as estatisticas, o planejador
+-- decide com o retrato antigo da tabela e pode ignorar o indice novo.
+
+-- Carga sintetica usada na medicao 5.3 — 60 mil pedidos em 24 meses, a
+-- ordem de grandeza de uma torrefacao pequena depois de alguns anos.
+-- Rode num banco DESCARTAVEL (torra_terra_teste), nunca em producao.
+--
+-- INSERT INTO pedidos (cliente_id, status, total, criado_em)
+-- SELECT 1,
+--        (ARRAY['CRIADO','PAGO','ENVIADO','CANCELADO'])[(g % 4) + 1],
+--        (random() * 300 + 40)::numeric(10,2),
+--        CURRENT_TIMESTAMP - (random() * 730 || ' days')::interval
+-- FROM generate_series(1, 60000) g;
+--
+-- ANALYZE pedidos;
+--
+-- Limpeza: TRUNCATE TABLE itens_pedido, pedidos RESTART IDENTITY CASCADE;
+
+
+-- ---------------------------------------------------------------------
+-- 5.2 MEDIDO na base de demonstracao — 40 pedidos
+--
+-- Seq Scan, com e sem o indice. E a decisao CERTA do planejador, e vale
+-- explicar na defesa em vez de esconder: a tabela inteira ocupa uma
+-- pagina de disco. Ler o indice e depois buscar as linhas na tabela seria
+-- dois acessos onde um resolve.
+--
+--   Aggregate  (cost=1.97..1.98 rows=1) (actual time=0.018..0.018 rows=1)
+--     ->  Seq Scan on pedidos  (cost=0.00..1.80 rows=34)
+--                              (actual time=0.005..0.010 rows=34)
+--           Filter: ((status <> 'CANCELADO') AND (criado_em >= ...))
+--           Rows Removed by Filter: 6
+--   Planning Time: 0.384 ms
+--   Execution Time: 0.053 ms
+--
+-- O indice nao esta inutil: ele esta esperando o volume. A proxima secao
+-- mostra o ponto de virada.
+-- ---------------------------------------------------------------------
+
+
+-- ---------------------------------------------------------------------
+-- 5.3 MEDIDO com 60.000 pedidos — a virada
+--
+-- Mesmo PostgreSQL 16, mesmo schema, banco torra_terra_teste.
+-- ---------------------------------------------------------------------
+--
+-- (a) CARD DE FATURAMENTO
+--
+-- ANTES — sem idx_pedidos_criado_em:
+--
+--   Aggregate  (cost=1667.30..1667.31 rows=1) (actual time=6.692..6.692)
+--     Buffers: shared hit=458
+--     ->  Seq Scan on pedidos  (cost=0.00..1658.00 rows=1860)
+--                              (actual time=0.011..6.553 rows=1838)
+--           Filter: ((status <> 'CANCELADO') AND (criado_em >= ...))
+--           Rows Removed by Filter: 58162
+--           Buffers: shared hit=458
+--   Execution Time: 6.713 ms
+--
+-- DEPOIS — com idx_pedidos_criado_em:
+--
+--   Aggregate  (cost=562.69..562.70 rows=1) (actual time=0.882..0.882)
+--     Buffers: shared hit=454 read=8
+--     ->  Bitmap Heap Scan on pedidos  (cost=46.98..553.58 rows=1823)
+--                                      (actual time=0.191..0.743 rows=1838)
+--           Recheck Cond: (criado_em >= ...)
+--           Filter: (status <> 'CANCELADO')
+--           Rows Removed by Filter: 640
+--           Heap Blocks: exact=454
+--           ->  Bitmap Index Scan on idx_pedidos_criado_em
+--                 (cost=0.00..46.52 rows=2430)
+--                 (actual time=0.154..0.155 rows=2478)
+--                 Index Cond: (criado_em >= ...)
+--                 Buffers: shared read=8
+--   Execution Time: 0.900 ms
+--
+--   6,713 ms -> 0,900 ms   (7,5x mais rapido)
+--
+-- O numero que explica o ganho e `Rows Removed by Filter`: 58.162 antes,
+-- 640 depois. O Seq Scan le as 60 mil linhas e joga 97% fora. O indice
+-- devolve 2.478 candidatas e o filtro de status descarta 640.
+--
+-- Repare que o custo estimado tambem caiu (1667 -> 562). E por isso que o
+-- planejador troca de plano sozinho: ele compara os dois custos. Nao ha
+-- dica nem hint no codigo da aplicacao.
+--
+--
+-- (b) LISTA DE PEDIDOS RECENTES — o caso em que o DESC se paga
+--
+-- ANTES:
+--
+--   Limit  (cost=2654.58..2654.63 rows=20) (actual time=10.387..10.390)
+--     ->  Sort  (cost=2654.58..2804.58 rows=60000)
+--               (actual time=10.385..10.387 rows=20)
+--           Sort Key: criado_em DESC
+--           Sort Method: top-N heapsort  Memory: 27kB
+--           ->  Seq Scan on pedidos p  (cost=0.00..1058.00 rows=60000)
+--                                      (actual time=0.004..4.043 rows=60000)
+--   Execution Time: 10.401 ms
+--
+-- DEPOIS:
+--
+--   Limit  (cost=0.29..1.42 rows=20) (actual time=0.011..0.022 rows=20)
+--     ->  Index Scan using idx_pedidos_criado_em on pedidos p
+--           (cost=0.29..3396.26 rows=60000)
+--           (actual time=0.010..0.020 rows=20)
+--   Execution Time: 0.031 ms
+--
+--   10,401 ms -> 0,031 ms   (335x mais rapido)
+--
+-- Este e o resultado mais eloquente da medicao, e a razao de o indice ser
+-- `criado_em DESC` e nao so `criado_em`.
+--
+-- ANTES o banco le TODAS as 60 mil linhas e ordena para entregar 20. Ele
+-- usa top-N heapsort, que e o algoritmo certo para "as N maiores", mas
+-- ainda assim precisa olhar cada linha uma vez.
+--
+-- DEPOIS ele caminha pelo indice, que JA ESTA na ordem pedida, le as 20
+-- primeiras entradas e para. Nao ha Sort no plano: ele desapareceu.
+--
+-- O `cost=0.29..3396.26` do Index Scan parece alto, mas o Limit acima
+-- cobra so `0.29..1.42`: o custo total seria percorrer o indice inteiro,
+-- e o plano para na vigesima linha.
+--
+--
+-- (c) O PRECO DO INDICE
+--
+--   tabela pedidos ...... 6736 kB
+--   idx_pedidos_criado_em  1328 kB   (~20% do tamanho da tabela)
+--   linhas .............. 60000
+--
+-- Indice nao e de graca: ocupa disco e todo INSERT de pedido passa a
+-- escrever em dois lugares. O checkout fica marginalmente mais lento para
+-- o painel ficar 335x mais rapido. A troca vale porque pedido se insere
+-- um por venda e o painel e consultado a cada visita do gestor — mas e
+-- uma TROCA, e e por isso que este projeto tem cinco indices e nao
+-- quinze: cada um existe por causa de uma consulta real, demonstrada.
+-- ---------------------------------------------------------------------

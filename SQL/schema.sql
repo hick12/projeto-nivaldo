@@ -191,3 +191,20 @@ CREATE INDEX idx_pedidos_cliente ON pedidos(cliente_id);
 
 -- Detalhe do pedido: o JOIN que monta os itens de cada pedido do historico.
 CREATE INDEX idx_itens_pedido ON itens_pedido(pedido_id);
+
+-- Projeto Final: o filtro de periodo do painel de indicadores.
+--
+-- TODA consulta de SQL/dashboard.sql comeca por
+-- `criado_em >= CURRENT_TIMESTAMP - make_interval(days => :dias)`. Sao
+-- sete indicadores numa unica tela, e sem este indice cada um deles varre
+-- `pedidos` inteiro — a tabela que cresce sem limite na loja, uma linha
+-- por venda, para sempre.
+--
+-- A ordem DESC esta aqui porque a lista de pedidos recentes do painel
+-- ordena por `criado_em DESC`. O PostgreSQL le indice B-tree nas duas
+-- direcoes, entao DESC nao e obrigatorio para o filtro funcionar; ele
+-- evita o passo de Sort na listagem, que e a consulta mais pesada da
+-- pagina.
+--
+-- O EXPLAIN ANALYZE de antes e depois esta em SQL/consultas.sql, secao 5.
+CREATE INDEX idx_pedidos_criado_em ON pedidos(criado_em DESC);
