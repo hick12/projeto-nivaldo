@@ -1,0 +1,1654 @@
+{
+  "meta": {
+    "titulo": "Projeto Final — Torra & Terra",
+    "subtitulo": "Relatório técnico navegável",
+    "segmento": "Segmento 1 — Varejo",
+    "contexto": "Carrinho, pedidos e pagamentos",
+    "disciplina": "Tratamento e Armazenamento da Informação",
+    "instituicao": "FACAMP",
+    "professor": "Prof. Me. Nivaldo T. Marcusso",
+    "grupo": [
+      "Felipe Furlan",
+      "Henrique Biruel",
+      "Henrique Palorca"
+    ],
+    "grupo_numero": "Grupo 3",
+    "banco": "PostgreSQL 17",
+    "data": "Dezembro de 2026",
+    "aviso": "Esta página complementa o relatório técnico entregue em documento. Não o substitui.",
+    "links": {
+      "loja": "https://nivaldo.felipefurlan.com.br",
+      "repositorio": "https://github.com/hick12/projeto-nivaldo",
+      "relatorio_pdf": "",
+      "api": "https://nivaldo.felipefurlan.com.br/api/produtos",
+      "health": "https://nivaldo.felipefurlan.com.br/health"
+    }
+  },
+  "secoes": [
+    {
+      "id": "capa",
+      "titulo": "Capa",
+      "numero": 1,
+      "blocos": [
+        {
+          "tipo": "texto",
+          "md": "**Torra & Terra** é um e-commerce de cafés especiais construído para demonstrar modelagem relacional, constraints no banco, transação atômica e deploy em nuvem. A loja é o pretexto; o objeto de estudo é o **banco de dados**."
+        },
+        {
+          "tipo": "lista",
+          "itens": [
+            "**Segmento:** 1 — Varejo",
+            "**Contexto:** carrinho, pedidos e pagamentos",
+            "**Processo:** venda transacional",
+            "**Dor atendida:** falhas de confirmação e de conciliação",
+            "**Banco:** PostgreSQL",
+            "**Aplicação no ar:** [nivaldo.felipefurlan.com.br](https://nivaldo.felipefurlan.com.br)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "resumo",
+      "titulo": "Resumo executivo",
+      "numero": 2,
+      "blocos": [
+        {
+          "tipo": "texto",
+          "md": "Uma torrefação de cafés especiais vende hoje por telefone, WhatsApp e planilha. O estoque é controlado à mão e o pedido é anotado por uma pessoa. Daí nascem duas falhas que se repetem: **o mesmo lote vendido duas vezes**, porque duas vendas aconteceram em paralelo e ninguém baixou o saldo a tempo, e **o pedido registrado pela metade**, em que o cabeçalho existe mas os itens não, ou o total não corresponde aos itens."
+        },
+        {
+          "tipo": "texto",
+          "md": "A solução entregue é uma loja em que **o banco de dados garante a integridade**, não a boa vontade de quem digita. O checkout é uma transação única: ou grava o pedido, os itens e a baixa de estoque, ou não grava nada. As regras de negócio vivem como constraints no PostgreSQL, visíveis em SQL e aplicadas mesmo quando o dado entra por fora da aplicação."
+        },
+        {
+          "tipo": "texto",
+          "md": "O resultado é mensurável e está no painel do gestor: **o indicador de conciliação mostra quantos pedidos têm `total` igual à soma de `quantidade × preco_unitario` dos itens**. Ele precisa dar 100%, e dá. Esse número é a medida direta da dor do contexto escolhido."
+        },
+        {
+          "tipo": "tabela",
+          "colunas": [
+            "Antes",
+            "Depois"
+          ],
+          "linhas": [
+            [
+              "Estoque conferido à mão, depois da venda",
+              "Estoque travado dentro da transação, antes da venda fechar"
+            ],
+            [
+              "Mesmo lote vendido duas vezes em vendas simultâneas",
+              "`SELECT ... FOR UPDATE` serializa as duas compras"
+            ],
+            [
+              "Pedido sem item, ou total que não bate",
+              "Transação única: tudo ou nada"
+            ],
+            [
+              "Preço do pedido antigo muda junto com a tabela",
+              "`preco_unitario` congelado no item"
+            ],
+            [
+              "Conferência de vendas no fim do mês, por amostragem",
+              "Indicador de conciliação, sobre 100% dos pedidos"
+            ]
+          ]
+        },
+        {
+          "tipo": "interativo",
+          "componente": "indicadores"
+        }
+      ]
+    },
+    {
+      "id": "contexto",
+      "titulo": "Contexto e problema",
+      "numero": 3,
+      "blocos": [
+        {
+          "tipo": "texto",
+          "md": "### O negócio\n\nCafé especial é um produto com duas características que mudam a modelagem. A primeira: ele é vendido **por origem**, e a região produtora carrega informação de venda — altitude, clima, perfil sensorial. A segunda: o cliente escolhe a **moagem na hora da compra**, porque a moagem depende do método de preparo dele, não do café."
+        },
+        {
+          "tipo": "texto",
+          "md": "### A dor\n\nO contexto escolhido dentro do Segmento 1 é *carrinho, pedidos e pagamentos*, cuja dor descrita é **falhas de confirmação e de conciliação**. Na prática, na torrefação, isso aparece assim:"
+        },
+        {
+          "tipo": "lista",
+          "itens": [
+            "**Venda a descoberto.** Dois clientes compram o último pacote do mesmo microlote no mesmo minuto. Os dois recebem confirmação; um deles vai receber um pedido de desculpas depois.",
+            "**Pedido incompleto.** A venda é anotada, a baixa de estoque não. Ou o contrário. Ninguém percebe até a conferência.",
+            "**Total que não bate.** O pedido diz um valor, a soma dos itens diz outro. Na conciliação do mês, alguém precisa descobrir qual dos dois está certo.",
+            "**Histórico que se reescreve.** O café é reajustado e o pedido do mês passado passa a mostrar o preço novo, inviabilizando qualquer conferência retroativa."
+          ]
+        },
+        {
+          "tipo": "texto",
+          "md": "### Atores e limites do MVP\n\nO escopo foi fechado de propósito. O que ficou fora está listado na seção 11, com o motivo."
+        },
+        {
+          "tipo": "tabela",
+          "colunas": [
+            "Ator",
+            "O que quer",
+            "No MVP?"
+          ],
+          "linhas": [
+            [
+              "Cliente",
+              "Encontrar cafés, escolher moagem e concluir a compra com confirmação confiável",
+              "Sim"
+            ],
+            [
+              "Gestor",
+              "Ver o que vendeu, o que falta torrar e mudar o status dos pedidos",
+              "Sim — painel e gestão de status"
+            ],
+            [
+              "Operação",
+              "Controlar estoque sem retrabalho",
+              "Parcial — o estoque baixa sozinho no checkout; não há cadastro de produto pela interface"
+            ],
+            [
+              "Financeiro",
+              "Conciliar as vendas do período",
+              "Parcial — o indicador de conciliação existe; não há integração contábil"
+            ]
+          ]
+        },
+        {
+          "tipo": "interativo",
+          "componente": "as_is_to_be"
+        }
+      ]
+    },
+    {
+      "id": "requisitos",
+      "titulo": "Requisitos",
+      "numero": 4,
+      "blocos": [
+        {
+          "tipo": "texto",
+          "md": "### Requisitos funcionais"
+        },
+        {
+          "tipo": "tabela",
+          "colunas": [
+            "ID",
+            "Requisito",
+            "Prioridade"
+          ],
+          "linhas": [
+            [
+              "RF01",
+              "Catálogo lido do banco, com filtro por região produtora",
+              "Alta"
+            ],
+            [
+              "RF02",
+              "Detalhe do produto: nota sensorial, torra, pontuação SCA, peso",
+              "Alta"
+            ],
+            [
+              "RF03",
+              "Carrinho na sessão, com escolha de quantidade **e moagem**",
+              "Alta"
+            ],
+            [
+              "RF04",
+              "Cadastro e login do cliente, com senha apenas como hash",
+              "Alta"
+            ],
+            [
+              "RF05",
+              "Checkout: carrinho vira pedido persistido e baixa estoque, em transação única",
+              "**Crítica**"
+            ],
+            [
+              "RF06",
+              "Meus pedidos: histórico do cliente logado, com os itens de cada pedido",
+              "Média"
+            ],
+            [
+              "RF07",
+              "Painel do gestor com indicadores lidos do banco",
+              "Alta"
+            ],
+            [
+              "RF08",
+              "Mudança de status do pedido, com devolução de estoque no cancelamento",
+              "Alta"
+            ],
+            [
+              "RF09",
+              "API JSON documentada, com health check",
+              "Média"
+            ]
+          ]
+        },
+        {
+          "tipo": "texto",
+          "md": "### Requisitos não funcionais"
+        },
+        {
+          "tipo": "tabela",
+          "colunas": [
+            "ID",
+            "Requisito",
+            "Como se verifica"
+          ],
+          "linhas": [
+            [
+              "RNF01",
+              "As regras de negócio vivem no banco como constraints, não só na aplicação",
+              "`SQL/schema.sql` e os testes que tentam inserir dado inválido"
+            ],
+            [
+              "RNF02",
+              "O checkout é atômico: commit total ou rollback total",
+              "`tests/test_checkout.py`"
+            ],
+            [
+              "RNF03",
+              "Senhas apenas como hash; nenhum segredo no código-fonte",
+              "`.env` fora do Git e o teste de senha em texto puro"
+            ],
+            [
+              "RNF04",
+              "A aplicação conecta com usuário próprio do PostgreSQL, não superusuário",
+              "`SQL/usuario_app.sql` e a conferência em produção"
+            ],
+            [
+              "RNF05",
+              "Consultas de catálogo, histórico e painel apoiadas por índice",
+              "`EXPLAIN ANALYZE` antes e depois, em `SQL/consultas.sql`"
+            ],
+            [
+              "RNF06",
+              "Publicado em nuvem, com HTTPS e deploy automático",
+              "URL pública respondendo"
+            ],
+            [
+              "RNF07",
+              "Mobile-first, contraste mínimo AA, `<label>` em todo input, foco visível",
+              "Abrir no celular"
+            ],
+            [
+              "RNF08",
+              "Backup lógico com `pg_dump` e restauração testada",
+              "Seção de evidências do relatório"
+            ],
+            [
+              "RNF09",
+              "Em produção a aplicação não sobe com segredo padrão: responde 503 nomeando a variável que falta",
+              "`tests/test_producao.py`"
+            ],
+            [
+              "RNF10",
+              "Eventos de segurança e de negócio registrados em log estruturado, sem credencial",
+              "`tests/test_producao.py`, nos testes de mascaramento"
+            ]
+          ]
+        },
+        {
+          "tipo": "texto",
+          "md": "### Regras de negócio\n\nSão as regras que o banco aplica, e não apenas o formulário. Cada uma tem uma constraint com nome próprio no `schema.sql`."
+        },
+        {
+          "tipo": "lista",
+          "itens": [
+            "Preço e total são `NUMERIC(10,2)` e nunca negativos — dinheiro não usa ponto flutuante binário.",
+            "Estoque é inteiro e nunca negativo. É a última linha de defesa contra venda a descoberto.",
+            "Pontuação SCA entre 80 e 100 — é a definição de café especial pela *Specialty Coffee Association*.",
+            "Torra só pode ser `CLARA`, `MEDIA` ou `ESCURA`.",
+            "Moagem só pode ser `GRAO`, `MEDIA` ou `FINA`, e é escolhida no item, não no produto.",
+            "Status do pedido só pode ser `CRIADO`, `PAGO`, `ENVIADO` ou `CANCELADO`.",
+            "Quantidade de item sempre maior que zero.",
+            "O mesmo café pode repetir no pedido desde que em moagens diferentes — `UNIQUE (pedido_id, produto_id, moagem)`.",
+            "Transições de status: `CRIADO → PAGO → ENVIADO`, e `CANCELADO` a partir de CRIADO ou PAGO. Enviado e cancelado são finais."
+          ]
+        },
+        {
+          "tipo": "texto",
+          "md": "### Critérios de aceite do RF05, o requisito crítico"
+        },
+        {
+          "tipo": "lista",
+          "itens": [
+            "Ou grava tudo — pedido, itens e baixa de estoque — ou não grava nada.",
+            "Estoque insuficiente em qualquer item: rollback completo e mensagem dizendo **qual** café faltou e quanto havia.",
+            "Produto que não existe mais: o pedido não é finalizado.",
+            "O `preco_unitario` é congelado no item no momento da compra.",
+            "Duas compras simultâneas não vendem o mesmo lote.",
+            "Depois de um checkout que falhou, o estoque continua exatamente como estava."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "processo",
+      "titulo": "Processo de negócio",
+      "numero": 5,
+      "blocos": [
+        {
+          "tipo": "texto",
+          "md": "O fluxo proposto tem **dois pontos de validação**, e essa duplicidade é intencional. O primeiro valida o formulário e protege a experiência de quem usa. O segundo valida **dentro da transação**, com o registro já travado, e protege o dado. Validação de formulário sozinha não impede duas compras simultâneas de ler o mesmo saldo."
+        },
+        {
+          "tipo": "interativo",
+          "componente": "as_is_to_be"
+        },
+        {
+          "tipo": "texto",
+          "md": "### O que acontece no momento do checkout\n\nA ordem importa. Nada é inserido antes de **todos** os itens estarem travados e validados — assim o caso de erro não chega sequer a criar o cabeçalho do pedido."
+        },
+        {
+          "tipo": "codigo",
+          "linguagem": "text",
+          "codigo": "BEGIN\n │\n ├─ SELECT ... FOR UPDATE      trava o estoque de cada café,\n │                             sempre em ordem crescente de id\n │\n ├─ valida existência e saldo de TODOS os itens\n │     └─ falhou? ──> ROLLBACK, nada gravado,\n │                    mensagem dizendo QUAL café faltou\n │\n ├─ INSERT do pedido\n ├─ INSERT de cada item         com preco_unitario congelado\n ├─ UPDATE do estoque\n │\n └─ COMMIT",
+          "legenda": "A transação de checkout. Travar sempre na mesma ordem crescente de id elimina o deadlock entre duas compras que disputam os mesmos cafés."
+        },
+        {
+          "tipo": "interativo",
+          "componente": "checkout"
+        },
+        {
+          "tipo": "texto",
+          "md": "### O ciclo de vida do pedido\n\nA mudança de status é a *atualização de registro* do trabalho. Cancelar não é só mudar uma coluna: **devolve o estoque dos itens na mesma transação**, com `SELECT ... FOR UPDATE` nos produtos, igual ao checkout. Ou as duas coisas acontecem, ou nenhuma."
+        },
+        {
+          "tipo": "codigo",
+          "linguagem": "text",
+          "codigo": "CRIADO ──pagamento──> PAGO ──expedição──> ENVIADO\n   │                   │\n   └───── CANCELADO <───┘\n         (devolve o estoque)",
+          "legenda": "ENVIADO e CANCELADO são terminais. Não existe des-enviar um pedido que já saiu, e reabrir um cancelado venderia de novo um café que pode já ter ido para outra pessoa."
+        }
+      ]
+    },
+    {
+      "id": "arquitetura",
+      "titulo": "Arquitetura",
+      "numero": 6,
+      "blocos": [
+        {
+          "tipo": "codigo",
+          "linguagem": "text",
+          "codigo": "Navegador\n    │  HTTPS\n    ▼\nRailway ── domínio próprio nivaldo.felipefurlan.com.br\n    │        certificado Let's Encrypt, renovação automática\n    ▼\ngunicorn ── Procfile: web: gunicorn app:app --bind 0.0.0.0:$PORT\n    │\n    ▼\nFlask (app.py)\n    ├─ rotas de página .... Jinja + um único static/style.css\n    ├─ blueprint api ...... JSON\n    └─ CLI ................ init-db · seed-db · reset-db · seed-demo\n    │\n    │  SQLAlchemy 2.0 + psycopg 3\n    ▼\nPostgreSQL  (papel torra_app, sem privilégio de schema)\n    ├─ 5 tabelas · 11 CHECK · 4 FK · 5 PK · 3 UNIQUE\n    ├─ 5 índices, cada um justificado por uma consulta real\n    └─ SQL/schema.sql é a fonte da verdade da estrutura",
+          "legenda": "A arquitetura inteira. Monólito servido pelo servidor, sem camada intermediária — o que o escopo pede e o que o grupo consegue defender linha por linha."
+        },
+        {
+          "tipo": "texto",
+          "md": "### Decisões de arquitetura, e por quê"
+        },
+        {
+          "tipo": "tabela",
+          "colunas": [
+            "Decisão",
+            "Alternativa descartada",
+            "Por quê"
+          ],
+          "linhas": [
+            [
+              "Renderização no servidor, com Jinja",
+              "SPA em JavaScript consumindo a API",
+              "Sem JavaScript, a política de segurança pode ser `script-src 'none'` e XSS fica praticamente inviável: não há onde um script injetado executar"
+            ],
+            [
+              "PostgreSQL",
+              "MongoDB ou outro banco de documentos",
+              "O checkout precisa de transação ACID, integridade referencial e controle de concorrência. A versão NoSQL do mesmo projeto existe e está discutida na seção 11"
+            ],
+            [
+              "`SQL/schema.sql` escrito à mão",
+              "`db.create_all()` do ORM",
+              "As constraints precisam estar **visíveis em SQL**. É o banco que garante a integridade, inclusive quando o dado entra por fora da aplicação"
+            ],
+            [
+              "Carrinho na sessão",
+              "Tabela `carrinhos` no banco",
+              "O carrinho é **processo**, não entidade: existe só enquanto a compra não fecha e não tem valor histórico. Vira entidade no instante do checkout"
+            ],
+            [
+              "Papel de gestor por variável de ambiente",
+              "Coluna `clientes.papel` ou tabela de papéis",
+              "Quem pode abrir o painel é decisão de configuração do deploy, da mesma natureza da `SECRET_KEY`. Evita migração de coluna num banco em produção para um requisito de operação"
+            ],
+            [
+              "CSS puro, num único arquivo",
+              "Tailwind, Bootstrap",
+              "Mobile-first de verdade e nenhuma dependência de build. A folha inteira é legível de uma vez"
+            ]
+          ]
+        },
+        {
+          "tipo": "texto",
+          "md": "### Segurança aplicada\n\nA aplicação passou por uma varredura com OWASP ZAP, que apontou onze alertas. Oito eram acionáveis e foram corrigidos."
+        },
+        {
+          "tipo": "lista",
+          "itens": [
+            "**Token CSRF** em toda escrita, verificado antes de qualquer acesso ao banco, com comparação de tempo constante. A API aceita o mesmo token pelo cabeçalho `X-CSRF-Token`.",
+            "**Cookie de sessão** com `HttpOnly`, `SameSite=Lax` e `Secure` em produção.",
+            "**Content-Security-Policy** com `script-src 'none'` em toda a loja. A única exceção é esta página, e está explicada abaixo.",
+            "**Senhas** apenas como hash scrypt. A senha em texto puro nunca chega ao banco.",
+            "**Usuário próprio do PostgreSQL**, sem privilégio para alterar o schema.",
+            "**Segredos sem valor padrão em produção:** sem `SECRET_KEY` ou `DATABASE_URL`, a aplicação responde 503 e nomeia a variável que falta — nunca o valor.",
+            "**Logs estruturados** de login falho, CSRF barrado, 403, checkout recusado e mudança de status. E-mail entra mascarado; senha, token e URL com credencial nunca entram."
+          ]
+        },
+        {
+          "tipo": "texto",
+          "md": "### Por que esta página executa JavaScript, e o resto da loja não\n\nA loja serve `script-src 'none'`. Esta rota, `/projeto-final`, é a única que serve `script-src 'self'` — sem `unsafe-inline` e sem `unsafe-eval`, o que significa que só um arquivo `.js` servido por este próprio domínio pode executar, e que conteúdo injetado no HTML continua sem poder rodar. O `connect-src 'self'` limita o `fetch` dos indicadores à própria aplicação.\n\nA troca é consciente: um relatório sobre transação concorrente que não deixa o leitor **ver** a concorrência acontecer explica menos. As rotas que tocam dinheiro, sessão e estoque — catálogo, carrinho, checkout, painel — continuam sem JavaScript nenhum."
+        }
+      ]
+    },
+    {
+      "id": "banco",
+      "titulo": "Banco de dados",
+      "numero": 7,
+      "blocos": [
+        {
+          "tipo": "texto",
+          "md": "O centro do trabalho. Cinco tabelas, com as regras de negócio escritas como constraints em DDL à mão — nunca geradas pelo ORM. Clique em qualquer tabela do diagrama para ver as colunas, os tipos, as constraints e os índices."
+        },
+        {
+          "tipo": "interativo",
+          "componente": "er"
+        },
+        {
+          "tipo": "texto",
+          "md": "### As duas decisões de modelagem que definem o projeto"
+        },
+        {
+          "tipo": "texto",
+          "md": "**1. `moagem` mora em `itens_pedido`, não em `produtos`.**\n\nO cliente escolhe a moagem na hora da compra. O mesmo café é vendido em grão para um cliente e moído fino para outro, no mesmo dia. Se `moagem` fosse coluna de `produtos`, o mesmo café precisaria virar três registros diferentes — triplicando o cadastro e quebrando o controle de estoque, que é do café e não da moagem.\n\nÉ esse atributo que faz `itens_pedido` ser **entidade** e não tabela de ligação: ela tem dados próprios que não pertencem nem ao pedido nem ao produto. E é o que torna possível a pergunta *em que moagem este café é mais pedido?*, que é um dos indicadores do painel."
+        },
+        {
+          "tipo": "texto",
+          "md": "**2. `preco_unitario` é congelado no item.**\n\nO preço do café muda: safra nova, câmbio, reajuste. Se o pedido antigo lesse `produtos.preco`, o histórico se reescreveria sozinho e o total do pedido deixaria de bater com a soma dos itens — exatamente a falha de conciliação que o contexto pede para resolver.\n\nGravar o preço no item é **desnormalização deliberada**: aceita-se a redundância porque o dado tem significado temporal. Não é *o preço do produto*, é *o preço naquele momento*."
+        },
+        {
+          "tipo": "codigo",
+          "linguagem": "sql",
+          "codigo": "-- O trecho do schema que carrega as duas decisões\nCREATE TABLE itens_pedido (\n    id             SERIAL         PRIMARY KEY,\n    pedido_id      INTEGER        NOT NULL,\n    produto_id     INTEGER        NOT NULL,\n    quantidade     INTEGER        NOT NULL,\n    preco_unitario NUMERIC(10,2)  NOT NULL,\n    moagem         VARCHAR(6)     NOT NULL,\n\n    CONSTRAINT fk_itens_pedido\n        FOREIGN KEY (pedido_id) REFERENCES pedidos(id) ON DELETE CASCADE,\n    CONSTRAINT fk_itens_produto\n        FOREIGN KEY (produto_id) REFERENCES produtos(id),\n\n    CONSTRAINT ck_itens_quantidade CHECK (quantidade > 0),\n    CONSTRAINT ck_itens_preco      CHECK (preco_unitario >= 0),\n    CONSTRAINT ck_itens_moagem     CHECK (moagem IN ('GRAO','MEDIA','FINA')),\n\n    -- O mesmo café pode repetir no pedido em moagens diferentes.\n    -- O que não pode é a mesma combinação duplicada: isso seria\n    -- falha de consolidação do carrinho.\n    CONSTRAINT uq_itens_pedido_produto_moagem\n        UNIQUE (pedido_id, produto_id, moagem)\n);",
+          "legenda": "`itens_pedido` no SQL/schema.sql. O CASCADE aqui faz sentido — item sem pedido é órfão. Em `pedidos`, o oposto: não há CASCADE para clientes, porque pedido é registro contábil e apagar um cliente não pode apagar o histórico de vendas."
+        },
+        {
+          "tipo": "texto",
+          "md": "### Normalização\n\nO modelo está na **3ª forma normal**, e a única desnormalização é a de `preco_unitario`, declarada acima.\n\n- **1FN** — todos os atributos são atômicos. `nota_sensorial` guarda um texto descritivo, não uma lista a ser pesquisada; se fosse preciso filtrar por nota, ela viraria tabela.\n- **2FN** — nenhuma dependência parcial. Todas as chaves primárias são simples (`SERIAL`), então não há do que depender parcialmente.\n- **3FN** — nenhuma dependência transitiva. `categorias` existe por causa disso: a descrição da região depende da **região**, não do café. Repetir *\"Cerrado Mineiro, altitude 900 m\"* em cada café da região seria redundância por dependência transitiva."
+        },
+        {
+          "tipo": "texto",
+          "md": "### Índices\n\nSão cinco, e cada um existe por causa de uma consulta real da aplicação. Índice acelera leitura mas encarece escrita e ocupa disco — criar \"por precaução\" é custo sem benefício."
+        },
+        {
+          "tipo": "tabela",
+          "colunas": [
+            "Índice",
+            "Consulta que o justifica",
+            "Plano observado"
+          ],
+          "linhas": [
+            [
+              "`idx_produtos_nome`",
+              "Catálogo: `ORDER BY nome`, sem WHERE",
+              "Seq Scan com 12 cafés — e é a decisão certa do planejador. Passa a compensar quando o Sort não couber em memória"
+            ],
+            [
+              "`idx_produtos_categoria`",
+              "Filtro por região: `WHERE categoria_id = ?`",
+              "Index Scan. O PostgreSQL não cria índice automático em coluna de FK, só em PK e UNIQUE"
+            ],
+            [
+              "`idx_pedidos_cliente`",
+              "Meus pedidos: `WHERE cliente_id = ?`",
+              "Bitmap Index Scan"
+            ],
+            [
+              "`idx_itens_pedido`",
+              "O JOIN que monta os itens de cada pedido",
+              "Index Scan no JOIN"
+            ],
+            [
+              "`idx_pedidos_criado_em`",
+              "**Novo no Projeto Final.** O filtro de período das sete consultas do painel, e o `ORDER BY criado_em DESC` da lista de pedidos",
+              "Bitmap Index Scan no filtro; Index Scan sem Sort na listagem"
+            ]
+          ]
+        },
+        {
+          "tipo": "interativo",
+          "componente": "explain"
+        },
+        {
+          "tipo": "texto",
+          "md": "### As consultas do painel\n\nEstão em `SQL/dashboard.sql`, escritas à mão e comentadas com a pergunta de negócio e o índice de cada uma. **Esse arquivo é a fonte da verdade:** a aplicação o lê, separa os blocos pelo marcador `-- @consulta: nome` e executa cada bloco com parâmetros ligados. Não existe divergência possível entre o SQL documentado e o SQL que roda — são o mesmo texto.\n\nO arquivo também roda direto no `psql`:"
+        },
+        {
+          "tipo": "codigo",
+          "linguagem": "bash",
+          "codigo": "psql \"$DATABASE_URL\" -v dias=30 -v limite_estoque=5 -f SQL/dashboard.sql",
+          "legenda": "O professor executa e vê o mesmo SQL que a tela executa."
+        },
+        {
+          "tipo": "codigo",
+          "linguagem": "sql",
+          "codigo": "-- @consulta: conciliacao\n--\n-- ESTE É O INDICADOR CENTRAL DO TRABALHO. O contexto escolhido é\n-- \"carrinho, pedidos e pagamentos\" e a dor descrita é \"falhas de\n-- confirmação e de conciliação\". Este número é a medida direta dessa\n-- dor: ele precisa dar ZERO divergência, sempre.\n--\n-- LEFT JOIN em vez de JOIN: um pedido sem nenhum item seria a prova de\n-- uma transação partida pela metade. Com JOIN ele desapareceria da\n-- conferência justamente no caso em que mais importa aparecer.\nSELECT\n    COUNT(*)                                    AS pedidos,\n    COUNT(*) FILTER (WHERE total <> soma_itens) AS divergentes,\n    COUNT(*) FILTER (WHERE total  = soma_itens) AS conciliados\nFROM (\n    SELECT\n        p.id,\n        p.total,\n        COALESCE(SUM(i.quantidade * i.preco_unitario), 0) AS soma_itens\n    FROM pedidos      p\n    LEFT JOIN itens_pedido i ON i.pedido_id = p.id\n    WHERE p.criado_em >= CURRENT_TIMESTAMP - make_interval(days => :dias)\n    GROUP BY p.id, p.total\n) AS conferencia;",
+          "legenda": "O indicador de conciliação, como está em SQL/dashboard.sql. Todos os status entram, cancelado incluído: cancelar devolve estoque mas não reescreve o histórico financeiro do pedido, e os itens continuam tendo que bater com o total."
+        },
+        {
+          "tipo": "texto",
+          "md": "### Segurança do parâmetro de período\n\nO `?dias=` chega pela URL. Ele **nunca** entra no SQL por concatenação de texto: vai ligado como parâmetro, e o intervalo é montado pelo próprio PostgreSQL com `make_interval(days => :dias)`. Além disso o valor é limitado a 1–365 antes de chegar ao banco, porque `?dias=99999999` faria o planejador desprezar o índice e varrer a tabela inteira — um jeito barato de derrubar o painel pela URL."
+        }
+      ]
+    },
+    {
+      "id": "implementacao",
+      "titulo": "Implementação",
+      "numero": 8,
+      "blocos": [
+        {
+          "tipo": "texto",
+          "md": "### A transação, no código\n\nO trecho abaixo é o coração da aplicação. Duas coisas valem o olhar: a **fase 1 trava e valida tudo antes de inserir qualquer coisa**, e o `except` desfaz a transação inteira tanto no erro de negócio quanto no inesperado."
+        },
+        {
+          "tipo": "codigo",
+          "linguagem": "python",
+          "codigo": "# Trava sempre na mesma ordem crescente de id. Duas compras\n# simultâneas que travassem os mesmos cafés em ordens opostas\n# ficariam em deadlock, uma esperando o lock da outra; ordenar\n# elimina o ciclo antes que ele exista.\nordenadas = sorted(linhas_carrinho, key=lambda l: l[\"produto_id\"])\n\n# --- Fase 1: travar e validar TODOS os itens -------------------\ntravados = []\nfor linha in ordenadas:\n    # with_for_update() gera o SELECT ... FOR UPDATE: segura a linha\n    # do produto até o fim da transação. Sem isso, duas compras\n    # simultâneas leem o mesmo estoque 1, ambas aprovam, e o mesmo\n    # lote é vendido duas vezes.\n    produto = db.session.scalar(\n        db.select(Produto)\n        .where(Produto.id == linha[\"produto_id\"])\n        .with_for_update()\n    )\n\n    if produto is None:\n        raise ProdutoInexistente(...)\n\n    if produto.estoque < linha[\"quantidade\"]:\n        raise EstoqueInsuficiente(\n            produto.nome, produto.estoque, linha[\"quantidade\"]\n        )\n\n    travados.append((produto, linha))\n\n# --- Fase 2: gravar -------------------------------------------\npedido = Pedido(cliente_id=cliente_id, status=\"CRIADO\", total=Decimal(\"0\"))\ndb.session.add(pedido)\ndb.session.flush()   # pega o id da sequence sem encerrar a transação\n\ntotal = Decimal(\"0\")\nfor produto, linha in travados:\n    db.session.add(ItemPedido(\n        pedido_id=pedido.id,\n        produto_id=produto.id,\n        quantidade=linha[\"quantidade\"],\n        # Congelado aqui, e só aqui.\n        preco_unitario=produto.preco,\n        moagem=linha[\"moagem\"],\n    ))\n    produto.estoque -= linha[\"quantidade\"]\n    total += produto.preco * linha[\"quantidade\"]\n\npedido.total = total\ndb.session.commit()",
+          "legenda": "finalizar_pedido, em app.py. A mesma função é usada pelo checkout da loja e pelo comando que gera os pedidos de demonstração — dado de demonstração inserido por INSERT direto produziria um painel bonito e mentiroso."
+        },
+        {
+          "tipo": "texto",
+          "md": "### O cancelamento, que é a transação ao contrário\n\nCancelar é duas escritas: o status do pedido e o saldo de cada produto. Se o `UPDATE` do estoque falhasse depois de o status já ter mudado, a loja ficaria com um pedido cancelado cujo café continua reservado para ninguém. O `SELECT ... FOR UPDATE` aparece duas vezes: no **pedido**, para dois gestores clicando \"cancelar\" ao mesmo tempo não devolverem o estoque duas vezes, e em cada **produto**, na mesma ordem crescente de id do checkout — mesma ordem nos dois lugares significa que um cancelamento e uma compra concorrentes nunca travam em ciclo."
+        },
+        {
+          "tipo": "texto",
+          "md": "### Interface\n\nMinimalismo editorial: muito espaço em branco, hierarquia por peso de fonte e não por caixa colorida, bordas de 1px, sem sombra e sem gradiente. CSS puro num único arquivo, mobile-first, com contraste mínimo AA, `<label>` em todo input e foco sempre visível.\n\nO painel do gestor tem uma restrição extra que moldou a solução: como a política de segurança não permite estilo escrito no HTML, as barras dos gráficos não podem usar `style=\"width: 62%\"`. Elas são **SVG gerado pelo servidor**, com a largura no atributo `width` do `<rect>` — que é atributo de apresentação do SVG, não CSS. E cada gráfico é uma tabela de verdade com a barra dentro da célula, o que mantém o número legível no projetor, no celular, no leitor de tela e na impressão."
+        },
+        {
+          "tipo": "texto",
+          "md": "### A API\n\nNove endpoints, documentados em `docs/api.md`, com especificação OpenAPI 3 e coleção do Postman. Erro sempre no mesmo formato `{\"erro\": \"...\"}`, com o código HTTP dizendo a natureza.\n\n**Dinheiro sai como string decimal, nunca como número JSON.** `\"148.00\"`, não `148.0`: número JSON é float IEEE 754, exatamente o tipo que o projeto rejeitou no banco por não representar 0,10 de forma exata."
+        },
+        {
+          "tipo": "tabela",
+          "colunas": [
+            "Método e rota",
+            "Acesso",
+            "O que faz"
+          ],
+          "linhas": [
+            [
+              "`GET /health`",
+              "público",
+              "`SELECT 1` no banco. 503 se o banco não responder"
+            ],
+            [
+              "`GET /api/categorias`",
+              "público",
+              "As regiões produtoras"
+            ],
+            [
+              "`GET /api/produtos`",
+              "público",
+              "O catálogo, com filtro opcional por categoria"
+            ],
+            [
+              "`GET /api/produtos/<id>`",
+              "público",
+              "Um café. 404 se não existir"
+            ],
+            [
+              "`GET /api/pedidos`",
+              "cliente logado",
+              "**Só os pedidos do próprio cliente**, filtrados pela sessão"
+            ],
+            [
+              "`GET /api/dashboard`",
+              "gestor",
+              "Os sete indicadores do painel"
+            ],
+            [
+              "`PATCH /api/pedidos/<id>/status`",
+              "gestor",
+              "Muda o status, com CSRF pelo cabeçalho `X-CSRF-Token`"
+            ],
+            [
+              "`GET /api/resumo`",
+              "público",
+              "Só agregados que não expõem ninguém. É o que alimenta os indicadores ao vivo desta página"
+            ]
+          ]
+        },
+        {
+          "tipo": "texto",
+          "md": "O filtro de `GET /api/pedidos` vem da **sessão**, nunca da URL. Se o id do cliente fosse parâmetro — `/api/pedidos?cliente=7` — bastaria trocar o número para ler o histórico de compras de qualquer pessoa. É a falha de controle de acesso mais comum em API REST, e existe um teste dedicado a travá-la."
+        }
+      ]
+    },
+    {
+      "id": "testes",
+      "titulo": "Testes e evidências",
+      "numero": 9,
+      "blocos": [
+        {
+          "tipo": "texto",
+          "md": "Os testes rodam contra um **PostgreSQL de verdade**, num banco separado — nunca SQLite. O `SELECT ... FOR UPDATE` e as constraints `CHECK` do schema são justamente o que precisa ser testado, e o SQLite trata os dois de forma diferente. Testar contra outro banco daria confiança falsa."
+        },
+        {
+          "tipo": "interativo",
+          "componente": "testes"
+        },
+        {
+          "tipo": "texto",
+          "md": "### Um teste nosso estava errado, e vale contar\n\nA primeira versão do teste de moagem inválida usava o valor `'EXTRAFINA'`. O banco recusou — mas por `StringDataRightTruncation`, não pelo `CHECK`: a coluna é `VARCHAR(6)` e a palavra tem nove caracteres. O dado era barrado do mesmo jeito, só que **pela regra errada**, e o teste não provava o que se propunha.\n\nTrocamos para `'MOIDA'`, que cabe em seis caracteres e não está no domínio, e separamos o caso do tamanho num teste próprio. A coluna tem duas defesas independentes e agora cada uma tem o seu teste."
+        },
+        {
+          "tipo": "texto",
+          "md": "### Evidência de que o rollback segura, colhida em produção\n\nO café `Chapada Geisha` tem estoque 1 no `seed.sql`, de propósito, e o comando de dados de demonstração foi escrito para **não consumi-lo** — se a demo o esvaziasse, a evidência mais importante do trabalho iria embora."
+        },
+        {
+          "tipo": "codigo",
+          "linguagem": "text",
+          "codigo": "Passo 1 — o estado antes\n  pedidos = 0      itens_pedido = 0\n  Chapada Geisha: estoque = 1\n\nPasso 2 — a tentativa que falha\n  Logado na loja, 2 unidades do Chapada Geisha no carrinho, finalizar.\n  O POST /checkout redirecionou para /carrinho, e a mensagem foi:\n\n  \"Estoque insuficiente de Chapada Geisha: você pediu 2 e temos 1 em estoque.\"\n\nPasso 3 — a prova de que nada foi gravado\n  pedidos = 0      itens_pedido = 0     <- idênticos ao passo 1\n  Chapada Geisha: estoque = 1           <- intacto\n  pedidos órfãos (sem item) = 0",
+          "legenda": "Rollback completo: nem o cabeçalho do pedido sobrou. E a mensagem nomeia o café e informa o saldo real, que é o critério de aceite do RF05."
+        },
+        {
+          "tipo": "texto",
+          "md": "### Backup e restauração\n\nBackup só é confiável quando a restauração também é testada. O procedimento foi executado contra o banco de produção, restaurando num banco **separado** — restaurar por cima do original destruiria justamente o que se quer proteger, e não provaria nada.\n\nAs contagens bateram, as 11 constraints `CHECK`, 4 FK, 5 PK e 3 UNIQUE voltaram, os índices voltaram, e a prova final: **a constraint ainda funciona** no banco restaurado."
+        },
+        {
+          "tipo": "codigo",
+          "linguagem": "text",
+          "codigo": "ERROR:  new row for relation \"produtos\" violates check constraint \"ck_produtos_preco\"\nDETAIL:  Failing row contains (13, Cafe invalido, null, -1.00, 0, 1, MEDIA, null, null, 250).",
+          "legenda": "Não é só a estrutura que voltou — a regra de negócio voltou junto e está ativa."
+        },
+        {
+          "tipo": "texto",
+          "md": "### Um obstáculo real do backup, que vale registrar\n\nA primeira tentativa falhou. O servidor do Railway roda PostgreSQL 18.6 e o `pg_dump` da máquina local era 17.5 — e o `pg_dump` **se recusa a dumpar um servidor mais novo que ele**. Não é capricho: formatos internos mudam entre versões maiores e um dump feito por cliente antigo poderia sair incompleto. A solução foi rodar o `pg_dump` de dentro do container do banco, onde as ferramentas são exatamente da versão do servidor."
+        }
+      ]
+    },
+    {
+      "id": "deploy",
+      "titulo": "Deploy e repositório",
+      "numero": 10,
+      "blocos": [
+        {
+          "tipo": "texto",
+          "md": "A aplicação está publicada no **Railway**, com aplicação e banco no mesmo projeto, domínio próprio e HTTPS válido."
+        },
+        {
+          "tipo": "lista",
+          "itens": [
+            "**Loja:** [nivaldo.felipefurlan.com.br](https://nivaldo.felipefurlan.com.br)",
+            "**Health check:** [/health](https://nivaldo.felipefurlan.com.br/health)",
+            "**Repositório:** [github.com/hick12/projeto-nivaldo](https://github.com/hick12/projeto-nivaldo)",
+            "**Certificado:** Let's Encrypt, renovação automática a cada 90 dias",
+            "**Processo:** `web: gunicorn app:app --bind 0.0.0.0:$PORT`"
+          ]
+        },
+        {
+          "tipo": "texto",
+          "md": "### O que a conferência em produção revelou, e que estava errado na documentação\n\nEste documento afirmava antes que *\"no Railway o usuário próprio é resolvido pelo provedor\"*. **Estava errado.** A conferência mostrou:"
+        },
+        {
+          "tipo": "codigo",
+          "linguagem": "text",
+          "codigo": "usuario=postgres  superuser=True  banco=railway",
+          "legenda": "O Railway entrega na DATABASE_URL o usuário `postgres`, que é superusuário dentro daquele container. O isolamento do provedor é no nível do container, não no nível do papel — e o RNF04 fala de papel."
+        },
+        {
+          "tipo": "texto",
+          "md": "Criamos então o papel `torra_app` também no banco de produção, com privilégios restritos, e apontamos a `DATABASE_URL` do serviço para ele. A verificação depois da troca:"
+        },
+        {
+          "tipo": "codigo",
+          "linguagem": "text",
+          "codigo": "conectou como torra_app | superuser=False\nSELECT ok -> 12 cafés\nINSERT e UPDATE ok (sequence acessível)\nDROP TABLE negado, como esperado: InsufficientPrivilege",
+          "legenda": "A aplicação continuou funcionando e agora não consegue mais alterar o schema."
+        },
+        {
+          "tipo": "texto",
+          "md": "### Migração em produção, sem apagar a loja\n\nO `SQL/schema.sql` começa com `DROP TABLE`. Rodar `flask init-db` contra o banco do Railway apagaria os clientes, os pedidos e o histórico de vendas — sem rollback possível.\n\nA única mudança de estrutura do Projeto Final é um índice novo, e ela vai por um script separado e **idempotente**, `SQL/migracao_projeto_final.sql`, aplicado com a credencial administrativa. A aplicação continua conectando como `torra_app`, que não pode criar índice — e isso é a prova de que o privilégio restrito está funcionando."
+        },
+        {
+          "tipo": "codigo",
+          "linguagem": "sql",
+          "codigo": "CREATE INDEX IF NOT EXISTS idx_pedidos_criado_em ON pedidos(criado_em DESC);\n\n-- O planejador decide usar o índice a partir das estatísticas da\n-- tabela. Depois de criar um índice novo, o ANALYZE evita que ele\n-- decida com dado velho e escolha Seq Scan por engano.\nANALYZE pedidos;\nANALYZE itens_pedido;",
+          "legenda": "O IF NOT EXISTS é o que torna o script idempotente: aplicar de novo não levanta erro e não interrompe o resto."
+        },
+        {
+          "tipo": "texto",
+          "md": "### Estrutura do repositório"
+        },
+        {
+          "tipo": "codigo",
+          "linguagem": "text",
+          "codigo": "├── app.py                    configuração, modelos, rotas, API e CLI\n├── Procfile · requirements.txt · .env.example\n├── SQL/\n│   ├── schema.sql            DDL à mão, com todas as constraints\n│   ├── seed.sql              12 cafés em 4 regiões\n│   ├── dashboard.sql         as consultas do painel, comentadas\n│   ├── consultas.sql         validação, evidências e EXPLAIN\n│   ├── migracao_projeto_final.sql   só o índice novo, idempotente\n│   └── usuario_app.sql       o papel dedicado da aplicação\n├── templates/                catálogo, produto, carrinho, checkout,\n│                             meus_pedidos, painel, projeto_final\n├── static/\n│   ├── style.css             a loja inteira, num arquivo\n│   └── projeto_final/        esta página\n├── tests/                    checkout, segurança, API, painel, produção\n└── docs/\n    ├── requisitos.md · modelo_er.md · dicionario_dados.md\n    ├── decisoes.md · evidencias.md · perguntas_defesa.md\n    ├── api.md · openapi.yaml · postman_projeto_final.json\n    └── deploy_railway.md",
+          "legenda": "Reprodutibilidade: o README traz o caminho do zero até a loja rodando, incluindo como carregar os dados de demonstração."
+        }
+      ]
+    },
+    {
+      "id": "conclusao",
+      "titulo": "Conclusão e limitações",
+      "numero": 11,
+      "blocos": [
+        {
+          "tipo": "texto",
+          "md": "O que o projeto demonstra, em uma frase: **a integridade de uma venda pode ser garantida pelo banco de dados, e isso é verificável**. O indicador de conciliação do painel não é uma afirmação sobre o código — é uma consulta que confere 100% dos pedidos e devolve zero divergências."
+        },
+        {
+          "tipo": "texto",
+          "md": "### O que aprendemos que não estava no plano"
+        },
+        {
+          "tipo": "lista",
+          "itens": [
+            "**O índice existir não obriga o planejador a usá-lo.** Com 12 cafés, o `idx_produtos_nome` é ignorado — e o planejador está certo, porque a consulta precisa de todas as linhas. Só com volume ele passa a compensar, e medimos onde fica a virada.",
+            "**Sequences não voltam atrás no PostgreSQL, nem em rollback.** O primeiro cliente de produção ficou com `id = 2`. É comportamento esperado, e é o que garante que duas compras simultâneas nunca recebam o mesmo id.",
+            "**Um teste pode passar pelo motivo errado.** O caso da moagem `'EXTRAFINA'` barrada pelo tamanho, e não pelo `CHECK`, está contado na seção 9.",
+            "**O isolamento de um provedor gerenciado não é isolamento de papel.** O Railway entrega um superusuário na string de conexão; o requisito de usuário próprio exigiu criar o papel à mão.",
+            "**Uma política de segurança restritiva muda o design da interface.** Sem estilo inline, a barra de gráfico em CSS não funciona — e a saída, SVG gerado no servidor dentro de uma tabela, ficou melhor para leitor de tela e para impressão do que a solução original."
+          ]
+        },
+        {
+          "tipo": "texto",
+          "md": "### Limitações, declaradas\n\nEstão aqui porque um MVP honesto diz o que não faz."
+        },
+        {
+          "tipo": "tabela",
+          "colunas": [
+            "Limitação",
+            "Por que ficou fora",
+            "O que seria preciso"
+          ],
+          "linhas": [
+            [
+              "Sem pagamento real",
+              "O escopo é a integridade do pedido, não a integração financeira",
+              "Gateway de pagamento e um status intermediário de autorização"
+            ],
+            [
+              "Sem frete",
+              "O total é a soma dos itens",
+              "Integração com transportadora e endereço do cliente"
+            ],
+            [
+              "Sem controle de lote e data de torra",
+              "É a evolução mais natural do domínio: café tem validade curta",
+              "Tabela de lotes, com o item do pedido referenciando o lote"
+            ],
+            [
+              "Sem cadastro de produto pela interface",
+              "Produtos entram pelo `seed.sql`",
+              "Telas de CRUD para a Operação, com as mesmas constraints"
+            ],
+            [
+              "Carrinho na sessão, não no banco",
+              "Decisão consciente: o carrinho é processo, não entidade",
+              "Aqui um Redis passaria a fazer sentido, para o carrinho sobreviver à troca de dispositivo"
+            ],
+            [
+              "Papel de gestor por variável de ambiente",
+              "Evita migração de coluna num banco em produção",
+              "Tabela de papéis, se houvesse mais de um punhado de gestores ou papéis diferentes entre si"
+            ],
+            [
+              "API sem paginação, versionamento ou limite de taxa",
+              "A API serve a própria aplicação, não integrações de terceiros",
+              "`?pagina=`, prefixo `/api/v1/` e *rate limit* antes de abrir para fora"
+            ]
+          ]
+        },
+        {
+          "tipo": "texto",
+          "md": "### A evolução híbrida: a mesma loja em CouchDB\n\nO grupo construiu também uma versão do Torra & Terra sobre **CouchDB**, um banco de documentos, para comparar as duas abordagens no mesmo domínio. A comparação é instrutiva justamente no ponto crítico.\n\nNo PostgreSQL, o checkout é uma transação que trava as linhas de estoque e garante tudo-ou-nada. No CouchDB não existe transação entre documentos: a atomicidade é por documento. Para o mesmo problema, é preciso **modelar diferente** — o pedido vira um documento único que já contém os itens, e o controle de concorrência passa a depender do `_rev` de cada documento de produto, com nova tentativa quando há conflito.\n\nA conclusão não é que um banco é melhor. É que **a escolha do banco é a escolha de onde a integridade vai morar**: no SGBD ou na aplicação. Para uma venda transacional com estoque disputado, deixá-la no SGBD custa menos código e falha menos."
+        },
+        {
+          "tipo": "texto",
+          "md": "### Próximos passos, em ordem de valor\n\n1. Lote e data de torra — resolve a dor de validade, que é real no negócio.\n2. Telas de cadastro para a Operação, eliminando o `seed.sql` como via de entrada.\n3. Gateway de pagamento, com o status de autorização entre `CRIADO` e `PAGO`.\n4. Hospedar as fontes junto com a aplicação, eliminando a dependência externa do Google Fonts e o último alerta aberto da varredura de segurança."
+        }
+      ]
+    },
+    {
+      "id": "bibliografia",
+      "titulo": "Bibliografia",
+      "numero": 12,
+      "blocos": [
+        {
+          "tipo": "texto",
+          "md": "### Livros"
+        },
+        {
+          "tipo": "lista",
+          "itens": [
+            "ELMASRI, R.; NAVATHE, S. B. **Sistemas de Banco de Dados**. 7. ed. São Paulo: Pearson, 2018.",
+            "DATE, C. J. **Introdução a Sistemas de Bancos de Dados**. 8. ed. Rio de Janeiro: Elsevier, 2004.",
+            "KLEPPMANN, M. **Designing Data-Intensive Applications**. Sebastopol: O'Reilly Media, 2017.",
+            "SADALAGE, P. J.; FOWLER, M. **NoSQL Distilled**. Boston: Addison-Wesley, 2012.",
+            "WINAND, M. **SQL Performance Explained**. Viena: Markus Winand, 2012."
+          ]
+        },
+        {
+          "tipo": "texto",
+          "md": "### Documentação oficial"
+        },
+        {
+          "tipo": "lista",
+          "itens": [
+            "**PostgreSQL 17 Documentation** — [postgresql.org/docs/17](https://www.postgresql.org/docs/17/), com atenção aos capítulos de *Transaction Isolation*, *Explicit Locking*, *Constraints* e *Using EXPLAIN*.",
+            "**Flask Documentation** — [flask.palletsprojects.com](https://flask.palletsprojects.com/).",
+            "**SQLAlchemy 2.0 Documentation** — [docs.sqlalchemy.org/en/20](https://docs.sqlalchemy.org/en/20/).",
+            "**psycopg 3 Documentation** — [psycopg.org/psycopg3/docs](https://www.psycopg.org/psycopg3/docs/).",
+            "**OWASP Top 10** — [owasp.org/Top10](https://owasp.org/Top10/).",
+            "**OWASP Cheat Sheet Series** — [cheatsheetseries.owasp.org](https://cheatsheetseries.owasp.org/), especialmente as folhas de CSRF e de *Password Storage*.",
+            "**MDN — Content Security Policy** — [developer.mozilla.org](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy).",
+            "**Specialty Coffee Association — Protocols & Best Practices** — [sca.coffee](https://sca.coffee/research/protocols-best-practices), que é a origem da faixa 80–100 da pontuação SCA.",
+            "**Railway Documentation** — [docs.railway.com](https://docs.railway.com/)."
+          ]
+        },
+        {
+          "tipo": "texto",
+          "md": "### Material da disciplina\n\nMARCUSSO, N. T. **Tratamento e Armazenamento da Informação** — slides e manual do Projeto Final Integrador. FACAMP, 2026."
+        },
+        {
+          "tipo": "texto",
+          "md": "### Sobre o uso de IA\n\nO desenvolvimento usou assistência de IA para codificação e redação, com revisão e testes executados pelo grupo. O prompt utilizado está versionado no repositório, em `docs/prompt_ia.md`, como anexo da entrega."
+        }
+      ]
+    }
+  ],
+  "dados": {
+    "as_is_to_be": {
+      "legenda": "Clique no botão para alternar entre o fluxo atual e o proposto.",
+      "as_is": {
+        "titulo": "AS IS — como a torrefação vende hoje",
+        "resumo": "Pedido por WhatsApp, estoque em planilha, baixa manual. Nenhum ponto de validação automático.",
+        "passos": [
+          {
+            "ator": "Cliente",
+            "acao": "Manda mensagem no WhatsApp perguntando o que tem",
+            "problema": ""
+          },
+          {
+            "ator": "Atendente",
+            "acao": "Abre a planilha e responde o que acha que tem em estoque",
+            "problema": "A planilha pode estar desatualizada desde a última venda"
+          },
+          {
+            "ator": "Cliente",
+            "acao": "Escolhe o café, a quantidade e a moagem por mensagem",
+            "problema": "A moagem às vezes não é registrada"
+          },
+          {
+            "ator": "Atendente",
+            "acao": "Anota o pedido numa segunda planilha",
+            "problema": "Pedido pode ficar sem item, ou com total digitado errado"
+          },
+          {
+            "ator": "Atendente",
+            "acao": "Baixa o estoque à mão, quando lembra",
+            "problema": "Duas vendas em paralelo baixam o mesmo saldo — o lote é vendido duas vezes"
+          },
+          {
+            "ator": "Financeiro",
+            "acao": "No fim do mês, confere as vendas por amostragem",
+            "problema": "Divergência entre o total e os itens aparece semanas depois, e sem rastro"
+          }
+        ]
+      },
+      "to_be": {
+        "titulo": "TO BE — a loja Torra & Terra",
+        "resumo": "Catálogo lido do banco, carrinho na sessão e checkout transacional. Dois pontos de validação, um deles dentro da transação.",
+        "passos": [
+          {
+            "ator": "Cliente",
+            "acao": "Abre o catálogo e filtra por região produtora",
+            "validacao": "Os dados vêm do banco, nunca de valor fixo no código"
+          },
+          {
+            "ator": "Cliente",
+            "acao": "Escolhe quantidade e moagem na página do produto",
+            "validacao": "V1 — produto existe? quantidade > 0? moagem é GRAO, MEDIA ou FINA?"
+          },
+          {
+            "ator": "Sistema",
+            "acao": "Guarda a linha no carrinho, na sessão",
+            "validacao": "A chave é o par (produto, moagem): o mesmo café em duas moagens são duas linhas"
+          },
+          {
+            "ator": "Cliente",
+            "acao": "Finaliza a compra",
+            "validacao": "Precisa estar logado; o token CSRF é verificado antes de tocar no banco"
+          },
+          {
+            "ator": "Banco",
+            "acao": "BEGIN · SELECT ... FOR UPDATE em cada café",
+            "validacao": "V2 — dentro da transação, com a linha travada. Duas compras simultâneas não leem o mesmo saldo"
+          },
+          {
+            "ator": "Banco",
+            "acao": "INSERT do pedido · INSERT dos itens · UPDATE do estoque · COMMIT",
+            "validacao": "Tudo-ou-nada. Falha em qualquer ponto desfaz a transação inteira"
+          },
+          {
+            "ator": "Cliente",
+            "acao": "Vê a confirmação e o pedido em Meus pedidos",
+            "validacao": "O preço do item está congelado: reajuste futuro não altera este pedido"
+          },
+          {
+            "ator": "Gestor",
+            "acao": "Abre o painel e vê faturamento, regiões, top cafés, estoque crítico e conciliação",
+            "validacao": "O indicador de conciliação confere 100% dos pedidos e devolve zero divergências"
+          }
+        ]
+      }
+    },
+    "er": {
+      "legenda": "Clique numa tabela para ver colunas, tipos, constraints e índices.",
+      "tabelas": [
+        {
+          "nome": "categorias",
+          "x": 20,
+          "y": 20,
+          "w": 200,
+          "h": 96,
+          "papel": "As regiões produtoras",
+          "nota": "Existe por causa da 3FN: a descrição da região depende da região, não do café.",
+          "colunas": [
+            {
+              "nome": "id",
+              "tipo": "SERIAL",
+              "regra": "PRIMARY KEY"
+            },
+            {
+              "nome": "nome",
+              "tipo": "VARCHAR(80)",
+              "regra": "NOT NULL · UNIQUE — a denominação de origem"
+            },
+            {
+              "nome": "regiao",
+              "tipo": "VARCHAR(80)",
+              "regra": "NOT NULL — o estado"
+            },
+            {
+              "nome": "descricao",
+              "tipo": "TEXT",
+              "regra": "altitude, clima, perfil sensorial"
+            }
+          ],
+          "indices": []
+        },
+        {
+          "nome": "produtos",
+          "x": 20,
+          "y": 168,
+          "w": 200,
+          "h": 192,
+          "papel": "Os cafés",
+          "nota": "A moagem NÃO está aqui, de propósito: ela é escolhida na compra. O estoque é do café, não da moagem.",
+          "colunas": [
+            {
+              "nome": "id",
+              "tipo": "SERIAL",
+              "regra": "PRIMARY KEY"
+            },
+            {
+              "nome": "nome",
+              "tipo": "VARCHAR(140)",
+              "regra": "NOT NULL"
+            },
+            {
+              "nome": "descricao",
+              "tipo": "TEXT",
+              "regra": ""
+            },
+            {
+              "nome": "preco",
+              "tipo": "NUMERIC(10,2)",
+              "regra": "NOT NULL · CHECK (preco >= 0) — NUMERIC e não FLOAT: dinheiro exige aritmética decimal exata"
+            },
+            {
+              "nome": "estoque",
+              "tipo": "INTEGER",
+              "regra": "NOT NULL DEFAULT 0 · CHECK (estoque >= 0) — a última linha de defesa contra venda a descoberto"
+            },
+            {
+              "nome": "categoria_id",
+              "tipo": "INTEGER",
+              "regra": "NOT NULL · FK → categorias(id)"
+            },
+            {
+              "nome": "torra",
+              "tipo": "VARCHAR(10)",
+              "regra": "NOT NULL · CHECK IN ('CLARA','MEDIA','ESCURA')"
+            },
+            {
+              "nome": "nota_sensorial",
+              "tipo": "VARCHAR(200)",
+              "regra": "texto descritivo; se fosse preciso filtrar por nota, viraria tabela"
+            },
+            {
+              "nome": "pontuacao_sca",
+              "tipo": "NUMERIC(4,2)",
+              "regra": "CHECK BETWEEN 80 AND 100 — é a definição de café especial pela SCA"
+            },
+            {
+              "nome": "peso_g",
+              "tipo": "INTEGER",
+              "regra": "NOT NULL DEFAULT 250 · CHECK (peso_g > 0)"
+            }
+          ],
+          "indices": [
+            {
+              "nome": "idx_produtos_nome",
+              "porque": "o ORDER BY do catálogo, a consulta mais executada da aplicação"
+            },
+            {
+              "nome": "idx_produtos_categoria",
+              "porque": "o filtro por região. O PostgreSQL não cria índice automático em coluna de FK"
+            }
+          ]
+        },
+        {
+          "nome": "clientes",
+          "x": 300,
+          "y": 20,
+          "w": 200,
+          "h": 110,
+          "papel": "Quem compra",
+          "nota": "A senha em texto puro nunca chega aqui: só o hash scrypt.",
+          "colunas": [
+            {
+              "nome": "id",
+              "tipo": "SERIAL",
+              "regra": "PRIMARY KEY"
+            },
+            {
+              "nome": "nome",
+              "tipo": "VARCHAR(120)",
+              "regra": "NOT NULL"
+            },
+            {
+              "nome": "email",
+              "tipo": "VARCHAR(160)",
+              "regra": "NOT NULL · UNIQUE · CHECK (POSITION('@' IN email) > 1) — não é validação completa de RFC de propósito: regex de RFC 5322 no banco custa caro e rejeita endereço válido"
+            },
+            {
+              "nome": "senha_hash",
+              "tipo": "VARCHAR(255)",
+              "regra": "NOT NULL — 255 porque o werkzeug gera hash scrypt longo, dimensionado com folga para o algoritmo padrão mudar"
+            },
+            {
+              "nome": "criado_em",
+              "tipo": "TIMESTAMP",
+              "regra": "NOT NULL DEFAULT CURRENT_TIMESTAMP"
+            }
+          ],
+          "indices": []
+        },
+        {
+          "nome": "pedidos",
+          "x": 300,
+          "y": 178,
+          "w": 200,
+          "h": 110,
+          "papel": "O cabeçalho da venda",
+          "nota": "Sem ON DELETE CASCADE para clientes, de propósito: pedido é registro contábil. O banco recusa apagar um cliente que tem pedido, e a decisão volta para a Operação.",
+          "colunas": [
+            {
+              "nome": "id",
+              "tipo": "SERIAL",
+              "regra": "PRIMARY KEY"
+            },
+            {
+              "nome": "cliente_id",
+              "tipo": "INTEGER",
+              "regra": "NOT NULL · FK → clientes(id), sem CASCADE"
+            },
+            {
+              "nome": "status",
+              "tipo": "VARCHAR(12)",
+              "regra": "NOT NULL DEFAULT 'CRIADO' · CHECK IN ('CRIADO','PAGO','ENVIADO','CANCELADO')"
+            },
+            {
+              "nome": "total",
+              "tipo": "NUMERIC(10,2)",
+              "regra": "NOT NULL DEFAULT 0 · CHECK (total >= 0) — tem que ser igual à soma dos itens, e o indicador de conciliação confere"
+            },
+            {
+              "nome": "criado_em",
+              "tipo": "TIMESTAMP",
+              "regra": "NOT NULL DEFAULT CURRENT_TIMESTAMP"
+            }
+          ],
+          "indices": [
+            {
+              "nome": "idx_pedidos_cliente",
+              "porque": "o histórico do cliente. Cresce sem limite: é o índice que mais se paga no longo prazo"
+            },
+            {
+              "nome": "idx_pedidos_criado_em",
+              "porque": "novo no Projeto Final: o filtro de período das sete consultas do painel e o ORDER BY da lista de pedidos"
+            }
+          ]
+        },
+        {
+          "nome": "itens_pedido",
+          "x": 300,
+          "y": 336,
+          "w": 200,
+          "h": 124,
+          "papel": "Entidade, não tabela de ligação",
+          "nota": "Carrega dois atributos que não pertencem nem ao pedido nem ao produto: a moagem escolhida na compra e o preço congelado da época. É o que a torna uma entidade de verdade.",
+          "colunas": [
+            {
+              "nome": "id",
+              "tipo": "SERIAL",
+              "regra": "PRIMARY KEY"
+            },
+            {
+              "nome": "pedido_id",
+              "tipo": "INTEGER",
+              "regra": "NOT NULL · FK → pedidos(id) ON DELETE CASCADE — aqui o CASCADE faz sentido: item sem pedido é órfão"
+            },
+            {
+              "nome": "produto_id",
+              "tipo": "INTEGER",
+              "regra": "NOT NULL · FK → produtos(id)"
+            },
+            {
+              "nome": "quantidade",
+              "tipo": "INTEGER",
+              "regra": "NOT NULL · CHECK (quantidade > 0)"
+            },
+            {
+              "nome": "preco_unitario",
+              "tipo": "NUMERIC(10,2)",
+              "regra": "NOT NULL · CHECK (>= 0) — CONGELADO na compra. Desnormalização deliberada: o dado tem significado temporal"
+            },
+            {
+              "nome": "moagem",
+              "tipo": "VARCHAR(6)",
+              "regra": "NOT NULL · CHECK IN ('GRAO','MEDIA','FINA') — escolhida na compra, não no cadastro do café"
+            },
+            {
+              "nome": "(composta)",
+              "tipo": "UNIQUE",
+              "regra": "UNIQUE (pedido_id, produto_id, moagem) — o mesmo café pode repetir no pedido em moagens diferentes; a mesma combinação não"
+            }
+          ],
+          "indices": [
+            {
+              "nome": "idx_itens_pedido",
+              "porque": "o JOIN que monta os itens de cada pedido, e a base dos indicadores de vendas por região e top cafés"
+            }
+          ]
+        }
+      ],
+      "ligacoes": [
+        {
+          "de": "categorias",
+          "para": "produtos",
+          "rotulo": "1:N",
+          "texto": "uma região tem muitos cafés"
+        },
+        {
+          "de": "clientes",
+          "para": "pedidos",
+          "rotulo": "1:N",
+          "texto": "um cliente faz muitos pedidos"
+        },
+        {
+          "de": "pedidos",
+          "para": "itens_pedido",
+          "rotulo": "1:N",
+          "texto": "um pedido tem muitos itens"
+        },
+        {
+          "de": "produtos",
+          "para": "itens_pedido",
+          "rotulo": "1:N",
+          "texto": "um café aparece em muitos itens"
+        }
+      ]
+    },
+    "checkout": {
+      "aviso": "Simulação ilustrativa",
+      "explicacao": "A animação abaixo não executa o banco: ela reproduz, passo a passo, o comportamento que o teste automatizado prova. O teste de verdade está em `tests/test_checkout.py`, e a evidência colhida em produção está na seção 9.",
+      "cafe": "Chapada Geisha",
+      "estoque_inicial": 1,
+      "mensagem_real": "Estoque insuficiente de Chapada Geisha: você pediu 2 e temos 1 em estoque.",
+      "nome_do_teste": "test_estoque_insuficiente_faz_rollback_completo",
+      "passos": [
+        {
+          "t": 0,
+          "ana": "clica em finalizar",
+          "bruno": "clica em finalizar",
+          "banco": "duas requisições chegam praticamente juntas",
+          "nota": "O estoque do Chapada Geisha é 1. A Ana quer 1 unidade, o Bruno quer 2."
+        },
+        {
+          "t": 1,
+          "ana": "BEGIN",
+          "bruno": "BEGIN",
+          "banco": "duas transações abertas",
+          "nota": "Até aqui, nada travado. As duas vão tentar ler o mesmo café."
+        },
+        {
+          "t": 2,
+          "ana": "SELECT ... FOR UPDATE",
+          "bruno": "",
+          "banco": "linha do produto travada pela Ana",
+          "nota": "Quem chega primeiro trava a linha. Não é sorte: é o primeiro a executar o FOR UPDATE."
+        },
+        {
+          "t": 3,
+          "ana": "lê estoque = 1 · pediu 1 · ok",
+          "bruno": "SELECT ... FOR UPDATE",
+          "banco": "Bruno ESPERANDO o lock",
+          "nota": "Aqui está o ponto do trabalho. O Bruno não lê estoque errado — ele simplesmente **espera**. Sem FOR UPDATE, ele leria 1 e também aprovaria."
+        },
+        {
+          "t": 4,
+          "ana": "INSERT pedido · INSERT item",
+          "bruno": "ainda esperando",
+          "banco": "gravações da Ana pendentes",
+          "nota": "Nada é definitivo ainda: o COMMIT é o único ponto em que algo se torna real."
+        },
+        {
+          "t": 5,
+          "ana": "UPDATE estoque = 0",
+          "bruno": "ainda esperando",
+          "banco": "estoque 1 → 0, pendente",
+          "nota": ""
+        },
+        {
+          "t": 6,
+          "ana": "COMMIT",
+          "bruno": "lock liberado",
+          "banco": "pedido da Ana GRAVADO · estoque = 0",
+          "nota": "A Ana recebe a confirmação. O lock cai e o Bruno finalmente lê."
+        },
+        {
+          "t": 7,
+          "ana": "Pedido confirmado",
+          "bruno": "lê estoque = 0 · pediu 2",
+          "banco": "Bruno lê o valor ATUALIZADO",
+          "nota": "Este é o motivo de tudo. O Bruno lê 0, e não 1, porque esperou o COMMIT da Ana."
+        },
+        {
+          "t": 8,
+          "ana": "",
+          "bruno": "ROLLBACK",
+          "banco": "nada gravado para o Bruno",
+          "nota": "Rollback completo: nem o cabeçalho do pedido sobrou. O carrinho dele continua intacto, para ele corrigir e tentar de novo."
+        },
+        {
+          "t": 9,
+          "ana": "",
+          "bruno": "mensagem na tela",
+          "banco": "estoque = 0 · 1 pedido · 0 pedidos órfãos",
+          "nota": "A mensagem nomeia o café e informa o saldo real — critério de aceite do RF05. O mesmo lote NÃO foi vendido duas vezes."
+        }
+      ]
+    },
+    "explain": {
+      "legenda": "Medições reais, colhidas com EXPLAIN (ANALYZE, BUFFERS) no PostgreSQL 16. Os planos completos estão em SQL/consultas.sql, seção 5.",
+      "nota_volume": "A base de demonstração tem poucas dezenas de pedidos, e nela o planejador escolhe Seq Scan — corretamente, porque a tabela inteira ocupa uma página de disco. Para medir o índice foi usada uma carga sintética de 60 mil pedidos em 24 meses, a ordem de grandeza de uma torrefação pequena depois de alguns anos.",
+      "casos": [
+        {
+          "nome": "O card de faturamento do painel",
+          "consulta": "SELECT COUNT(*), COALESCE(SUM(total), 0)\nFROM pedidos\nWHERE criado_em >= CURRENT_TIMESTAMP - make_interval(days => 30)\n  AND status <> 'CANCELADO';",
+          "antes": {
+            "titulo": "Sem idx_pedidos_criado_em",
+            "plano": "Aggregate  (cost=1667.30..1667.31 rows=1)\n           (actual time=6.692..6.692)\n  Buffers: shared hit=458\n  ->  Seq Scan on pedidos  (cost=0.00..1658.00 rows=1860)\n                           (actual time=0.011..6.553 rows=1838)\n        Filter: ((status <> 'CANCELADO')\n                 AND (criado_em >= ...))\n        Rows Removed by Filter: 58162\n        Buffers: shared hit=458",
+            "tempo": "6,713 ms"
+          },
+          "depois": {
+            "titulo": "Com idx_pedidos_criado_em",
+            "plano": "Aggregate  (cost=562.69..562.70 rows=1)\n           (actual time=0.882..0.882)\n  Buffers: shared hit=454 read=8\n  ->  Bitmap Heap Scan on pedidos  (cost=46.98..553.58)\n                                   (actual time=0.191..0.743 rows=1838)\n        Recheck Cond: (criado_em >= ...)\n        Filter: (status <> 'CANCELADO')\n        Rows Removed by Filter: 640\n        Heap Blocks: exact=454\n        ->  Bitmap Index Scan on idx_pedidos_criado_em\n              (cost=0.00..46.52) (actual time=0.154..0.155\n                                  rows=2478)\n              Index Cond: (criado_em >= ...)",
+            "tempo": "0,900 ms"
+          },
+          "ganho": "7,5× mais rápido",
+          "licao": "O número que explica o ganho é `Rows Removed by Filter`: 58.162 antes, 640 depois. O Seq Scan lê as 60 mil linhas e joga 97% fora. O índice devolve 2.478 candidatas e o filtro de status descarta 640. Repare que o **custo estimado** também caiu, de 1667 para 562 — é por isso que o planejador troca de plano sozinho, comparando custos. Não há dica nem hint no código da aplicação."
+        },
+        {
+          "nome": "A lista de pedidos recentes do painel",
+          "consulta": "SELECT p.id, p.status, p.total, p.criado_em\nFROM pedidos p\nORDER BY p.criado_em DESC\nLIMIT 20;",
+          "antes": {
+            "titulo": "Sem idx_pedidos_criado_em",
+            "plano": "Limit  (cost=2654.58..2654.63 rows=20)\n        (actual time=10.387..10.390 rows=20)\n  ->  Sort  (cost=2654.58..2804.58 rows=60000)\n            (actual time=10.385..10.387 rows=20)\n        Sort Key: criado_em DESC\n        Sort Method: top-N heapsort  Memory: 27kB\n        ->  Seq Scan on pedidos p\n              (cost=0.00..1058.00 rows=60000)\n              (actual time=0.004..4.043 rows=60000)",
+            "tempo": "10,401 ms"
+          },
+          "depois": {
+            "titulo": "Com idx_pedidos_criado_em",
+            "plano": "Limit  (cost=0.29..1.42 rows=20)\n        (actual time=0.011..0.022 rows=20)\n  ->  Index Scan using idx_pedidos_criado_em on pedidos p\n        (cost=0.29..3396.26 rows=60000)\n        (actual time=0.010..0.020 rows=20)",
+            "tempo": "0,031 ms"
+          },
+          "ganho": "335× mais rápido",
+          "licao": "O resultado mais eloquente da medição, e a razão de o índice ser `criado_em DESC` e não só `criado_em`. **Antes**, o banco lê todas as 60 mil linhas e ordena para entregar 20 — usa `top-N heapsort`, que é o algoritmo certo para \"as N maiores\", mas ainda precisa olhar cada linha. **Depois**, ele caminha pelo índice, que já está na ordem pedida, lê as 20 primeiras entradas e para. O passo de Sort desapareceu do plano. O `cost=0.29..3396.26` parece alto, mas o Limit acima cobra só `0.29..1.42`: o custo total seria percorrer o índice inteiro, e o plano para na vigésima linha."
+        }
+      ],
+      "preco": {
+        "titulo": "O preço do índice",
+        "linhas": [
+          [
+            "tabela `pedidos`",
+            "6736 kB"
+          ],
+          [
+            "`idx_pedidos_criado_em`",
+            "1328 kB (~20% da tabela)"
+          ],
+          [
+            "linhas",
+            "60.000"
+          ]
+        ],
+        "texto": "Índice não é de graça: ocupa disco e todo INSERT de pedido passa a escrever em dois lugares. O checkout fica marginalmente mais lento para o painel ficar 335× mais rápido. A troca vale porque pedido se insere um por venda e o painel é consultado a cada visita do gestor — mas é uma **troca**, e é por isso que este projeto tem cinco índices e não quinze."
+      }
+    },
+    "testes": {
+      "legenda": "Casos de teste automatizados. Filtre por tipo.",
+      "nota": "Todos rodam contra um PostgreSQL de verdade, num banco separado — nunca SQLite, porque o SELECT ... FOR UPDATE e as constraints CHECK são justamente o que precisa ser testado.",
+      "casos": [
+        {
+          "tipo": "Transação",
+          "caso": "Compra normal",
+          "entrada": "3 unidades de um café com estoque 10, moagem FINA",
+          "esperado": "Pedido gravado, item gravado, estoque em 7, total = 3 × preço",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_compra_normal_grava_pedido_itens_e_baixa_estoque"
+        },
+        {
+          "tipo": "Transação",
+          "caso": "Estoque insuficiente no segundo item",
+          "entrada": "Item válido + 5 unidades de um café com estoque 1",
+          "esperado": "Rollback completo: nenhum pedido, nenhum item, estoque dos dois intacto, mensagem nomeando o café",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_estoque_insuficiente_faz_rollback_completo"
+        },
+        {
+          "tipo": "Transação",
+          "caso": "Produto inexistente no carrinho",
+          "entrada": "Item válido + produto_id 999999",
+          "esperado": "Pedido não é finalizado, nada gravado",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_produto_inexistente_nao_finaliza_o_pedido"
+        },
+        {
+          "tipo": "Transação",
+          "caso": "Carrinho vazio",
+          "entrada": "Lista de itens vazia",
+          "esperado": "Nenhum pedido criado",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_carrinho_vazio_nao_gera_pedido"
+        },
+        {
+          "tipo": "Modelagem",
+          "caso": "Mesmo café em duas moagens",
+          "entrada": "2 unidades em GRAO + 1 unidade em FINA, do mesmo café",
+          "esperado": "Duas linhas em itens_pedido, estoque baixado em 3",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_mesmo_cafe_em_moagens_diferentes_vira_duas_linhas"
+        },
+        {
+          "tipo": "Modelagem",
+          "caso": "Preço congelado após reajuste",
+          "entrada": "Compra a 89,00; depois o produto sobe para 129,00",
+          "esperado": "O item do pedido continua em 89,00 e o total não muda",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_preco_unitario_fica_congelado_apos_reajuste"
+        },
+        {
+          "tipo": "Constraint",
+          "caso": "Preço negativo",
+          "entrada": "INSERT de produto com preço −10,00",
+          "esperado": "O BANCO recusa, por ck_produtos_preco",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_preco_negativo_e_recusado_pelo_banco"
+        },
+        {
+          "tipo": "Constraint",
+          "caso": "Estoque negativo",
+          "entrada": "UPDATE de estoque para −1",
+          "esperado": "O banco recusa, por ck_produtos_estoque",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_estoque_negativo_e_recusado_pelo_banco"
+        },
+        {
+          "tipo": "Constraint",
+          "caso": "Pontuação SCA fora de 80–100",
+          "entrada": "INSERT com pontuacao_sca = 72",
+          "esperado": "O banco recusa, por ck_produtos_sca",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_pontuacao_sca_fora_da_faixa_e_recusada"
+        },
+        {
+          "tipo": "Constraint",
+          "caso": "Moagem fora do domínio",
+          "entrada": "Item com moagem 'MOIDA' — cabe em VARCHAR(6), mas não é do domínio",
+          "esperado": "O banco recusa, por ck_itens_moagem",
+          "obtido": "Conforme o esperado. A primeira versão deste teste usava 'EXTRAFINA' e passava pelo motivo errado — ver seção 9",
+          "evidencia": "test_moagem_invalida_e_recusada_pelo_banco"
+        },
+        {
+          "tipo": "Dashboard",
+          "caso": "Indicador muda depois de inserir dados",
+          "entrada": "Lê os indicadores, faz um checkout de 3 × 89,00, lê de novo",
+          "esperado": "Pedidos 0 → 1, faturamento 0 → 267,00, ticket médio = 267,00, a região do café aparece com 100% de participação",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_indicador_se_move_depois_de_um_checkout"
+        },
+        {
+          "tipo": "Dashboard",
+          "caso": "Conciliação em zero após vários checkouts",
+          "entrada": "Oito pedidos, dois clientes, moagens misturadas",
+          "esperado": "8 pedidos, 8 conciliados, 0 divergentes — e a conferência refeita à mão concorda com a consulta do painel",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_conciliacao_fica_em_zero_depois_de_varios_checkouts"
+        },
+        {
+          "tipo": "Dashboard",
+          "caso": "Pedido cancelado sai do faturamento mas fica no funil",
+          "entrada": "Um pedido, depois cancelado",
+          "esperado": "Faturamento volta a zero; o status CANCELADO conta no funil; a conciliação continua fechando",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_pedido_cancelado_sai_do_faturamento_mas_fica_no_funil"
+        },
+        {
+          "tipo": "Dashboard",
+          "caso": "Período absurdo vindo da URL",
+          "entrada": "?dias=99999999, ?dias=abacaxi, ?dias=-5",
+          "esperado": "Limitado a 365, cai em 30, sobe para 1 — nunca varre a tabela inteira",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_filtro_de_periodo_limita_o_valor_vindo_da_url"
+        },
+        {
+          "tipo": "Atualização",
+          "caso": "Transição válida CRIADO → PAGO",
+          "entrada": "Pedido em CRIADO, status PAGO",
+          "esperado": "Status muda; a resposta traz o antes e o depois",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_transicao_valida_criado_para_pago"
+        },
+        {
+          "tipo": "Atualização",
+          "caso": "Transições inválidas",
+          "entrada": "CRIADO → ENVIADO, ENVIADO → PAGO, ENVIADO → CANCELADO, CANCELADO → PAGO",
+          "esperado": "Todas recusadas com mensagem clara, e o status não muda",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_transicoes_invalidas_sao_recusadas"
+        },
+        {
+          "tipo": "Atualização",
+          "caso": "Cancelamento devolve o estoque",
+          "entrada": "Pedido de 2 unidades (estoque em 8), cancelado",
+          "esperado": "Estoque volta para 10, na mesma transação; o total e os itens do pedido continuam gravados",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_cancelamento_devolve_o_estoque"
+        },
+        {
+          "tipo": "Atualização",
+          "caso": "Cancelamento recusado não altera nada",
+          "entrada": "Cancelar um pedido já cancelado",
+          "esperado": "Recusado, e o estoque NÃO é devolvido uma segunda vez — clique repetido não cria estoque do nada",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_cancelamento_recusado_nao_altera_nada"
+        },
+        {
+          "tipo": "Acesso",
+          "caso": "Painel para visitante",
+          "entrada": "GET /painel sem sessão",
+          "esperado": "302 para o login — e não 403, que revelaria que a rota existe",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_painel_redireciona_visitante_para_o_login"
+        },
+        {
+          "tipo": "Acesso",
+          "caso": "Painel para cliente comum",
+          "entrada": "GET /painel logado, fora de ADMIN_EMAILS",
+          "esperado": "403 com página amigável, sem citar nome de variável de ambiente",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_painel_devolve_403_para_cliente_comum"
+        },
+        {
+          "tipo": "Acesso",
+          "caso": "Painel para gestor",
+          "entrada": "GET /painel logado, dentro de ADMIN_EMAILS",
+          "esperado": "200 com os indicadores",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_painel_abre_para_o_gestor"
+        },
+        {
+          "tipo": "Acesso",
+          "caso": "Mudança de status por cliente comum",
+          "entrada": "POST na rota de status, com token CSRF válido da própria sessão",
+          "esperado": "403 — o que barra é o papel, não o token. E o status não muda",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_mudanca_de_status_e_negada_a_cliente_comum"
+        },
+        {
+          "tipo": "API",
+          "caso": "Pedidos de outro cliente",
+          "entrada": "Dois clientes com um pedido cada; GET /api/pedidos logado como o primeiro",
+          "esperado": "Só o pedido dele. E o inverso também",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_pedidos_nunca_devolve_pedido_de_outro_cliente"
+        },
+        {
+          "tipo": "API",
+          "caso": "Produto inexistente",
+          "entrada": "GET /api/produtos/999999",
+          "esperado": "404 com corpo JSON {\"erro\": \"...\"}, nunca 500 nem HTML",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_produto_inexistente_devolve_404_em_json"
+        },
+        {
+          "tipo": "API",
+          "caso": "PATCH sem token CSRF",
+          "entrada": "PATCH /api/pedidos/<id>/status sem o cabeçalho X-CSRF-Token",
+          "esperado": "400, e o status do pedido não muda",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_patch_sem_token_csrf_devolve_400"
+        },
+        {
+          "tipo": "API",
+          "caso": "Transição inválida pela API",
+          "entrada": "PATCH com status ENVIADO num pedido em CRIADO",
+          "esperado": "409, não 400: a requisição está certa, o estado é que impede",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_patch_transicao_invalida_devolve_409"
+        },
+        {
+          "tipo": "API",
+          "caso": "Resumo público não vaza dado",
+          "entrada": "GET /api/resumo com pedidos no banco",
+          "esperado": "Sem faturamento, sem ticket médio, sem nome nem e-mail de cliente, sem valor absoluto nenhum no corpo",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_resumo_nao_vaza_faturamento_nem_cliente"
+        },
+        {
+          "tipo": "API",
+          "caso": "Dinheiro é string decimal",
+          "entrada": "GET /api/produtos",
+          "esperado": "preco = \"148.00\" como string, não 148.0 como número JSON",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_preco_e_string_decimal_nunca_float"
+        },
+        {
+          "tipo": "Segurança",
+          "caso": "POST sem token CSRF",
+          "entrada": "POST /cadastro vindo de fora, sem o campo _csrf",
+          "esperado": "400",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_post_sem_token_csrf_e_recusado"
+        },
+        {
+          "tipo": "Segurança",
+          "caso": "Senha em texto puro",
+          "entrada": "Cliente cadastrado",
+          "esperado": "Só o hash scrypt no banco; a senha digitada não aparece em lugar nenhum",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_senha_nunca_e_gravada_em_texto_puro"
+        },
+        {
+          "tipo": "Segurança",
+          "caso": "Cabeçalhos de segurança",
+          "entrada": "GET /",
+          "esperado": "CSP com script-src 'none', X-Frame-Options, X-Content-Type-Options, Referrer-Policy; HSTS só sobre HTTPS",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_content_security_policy_bloqueia_script"
+        },
+        {
+          "tipo": "Produção",
+          "caso": "Produção sem SECRET_KEY",
+          "entrada": "AMBIENTE=producao, DATABASE_URL definida, SECRET_KEY ausente",
+          "esperado": "503 em toda rota, nomeando SECRET_KEY — e nenhum valor na página: nem a senha do banco, nem a URL, nem o host",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_producao_sem_secret_key_responde_503"
+        },
+        {
+          "tipo": "Produção",
+          "caso": "Variável definida mas vazia",
+          "entrada": "SECRET_KEY='   '",
+          "esperado": "Conta como ausente — erro comum e silencioso no painel do provedor",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_variavel_vazia_conta_como_ausente"
+        },
+        {
+          "tipo": "Produção",
+          "caso": "Senha nunca aparece em log",
+          "entrada": "URLs de conexão com senha, em vários formatos",
+          "esperado": "A senha não está na saída, em nenhuma forma de entrada",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_mascarar_url_nunca_devolve_a_senha"
+        },
+        {
+          "tipo": "Produção",
+          "caso": "Cookie Secure sem FLASK_ENV",
+          "entrada": "RAILWAY_ENVIRONMENT definida, FLASK_ENV ausente",
+          "esperado": "O cookie continua Secure — não depende de uma só variável",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_cookie_e_secure_em_producao_mesmo_sem_flask_env"
+        },
+        {
+          "tipo": "Produção",
+          "caso": "Erro 500 registra a falha de verdade",
+          "entrada": "Uma rota que levanta RuntimeError",
+          "esperado": "O log nomeia a causa (RuntimeError) e traz o traceback da falha original — não o do InternalServerError que a embrulha",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_erro_500_registra_a_excecao_de_verdade"
+        },
+        {
+          "tipo": "Produção",
+          "caso": "Página de erro 500 não mostra traceback",
+          "entrada": "A mesma rota que estoura",
+          "esperado": "A página não traz traceback, nome de exceção nem a mensagem do erro; e diz ao cliente que nada foi gravado pela metade",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_pagina_de_erro_500_nao_mostra_traceback"
+        }
+      ]
+    }
+  }
+}

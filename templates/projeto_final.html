@@ -1,0 +1,93 @@
+{#
+  Projeto Final — Torra & Terra · relatório técnico navegável
+
+  Esta rota é a ÚNICA da aplicação que executa JavaScript. A política de
+  conteúdo dela, definida no app.py, é `script-src 'self'` — sem
+  'unsafe-inline' e sem 'unsafe-eval'. Em consequência:
+
+    - não existe <script> escrito aqui dentro, nem onclick= em elemento
+      nenhum: só o arquivo app.js, servido por este domínio;
+    - não existe style= escrito aqui, porque `style-src 'self'` também
+      não traz 'unsafe-inline'. Todo visual mora no estilo.css.
+
+  O HTML abaixo é uma CASCA. Nenhum texto do relatório está aqui: tudo
+  vem de static/projeto_final/conteudo.json, e o formato está
+  documentado em static/projeto_final/LEIAME.md. Trocar o conteúdo do
+  relatório é trocar aquele arquivo — este não precisa ser aberto.
+#}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+        content="Relatório técnico do Projeto Final da disciplina Tratamento e Armazenamento da Informação — FACAMP. Loja Torra &amp; Terra, em Flask e PostgreSQL.">
+
+  <title>Projeto Final — Torra &amp; Terra</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@300;400;500;600&display=swap">
+
+  <link rel="stylesheet"
+        href="{{ url_for('static', filename='projeto_final/estilo.css') }}">
+</head>
+<body>
+
+<a class="pular" href="#relatorio">Pular para o conteúdo</a>
+
+{# O botão só aparece no celular, por media query. No desktop o índice
+   fica sempre visível na coluna da esquerda. #}
+<button type="button" id="abrir-indice" class="abrir-indice"
+        aria-expanded="false" aria-controls="indice">
+  <span aria-hidden="true">☰</span> Seções
+</button>
+
+<aside id="indice" class="indice">
+  <nav aria-label="Sumário do relatório">
+    <p class="indice-marca">
+      Projeto Final
+      <span class="indice-marca-loja">Torra <span class="amp">&amp;</span> Terra</span>
+    </p>
+
+    {# Preenchido pelo app.js a partir do conteudo.json. Uma lista
+       ordenada porque as seções do relatório são numeradas. #}
+    <ol class="indice-lista" id="indice-lista"></ol>
+
+    <p class="indice-rodape">
+      <a href="/">← Voltar para a loja</a>
+    </p>
+  </nav>
+</aside>
+
+<main id="relatorio" class="relatorio"
+      data-conteudo="{{ url_for('static', filename='projeto_final/conteudo.json') }}"
+      data-resumo="{{ url_for('api.api_resumo') }}">
+  {# Substituído pelo conteúdo renderizado. Se o JavaScript estiver
+     desligado no navegador, é esta mensagem que fica — e ela precisa
+     dizer o que fazer, não apenas falhar em silêncio. #}
+  <noscript>
+    <div class="falha-geral">
+      <h1>Este relatório precisa de JavaScript</h1>
+      <p>
+        Os componentes interativos — o diagrama do modelo de dados, a
+        simulação de duas compras simultâneas e os indicadores lidos ao
+        vivo da loja — são o motivo de esta página existir.
+      </p>
+      <p>
+        O relatório completo também é entregue em documento, e a loja em
+        si <strong>não usa JavaScript nenhum</strong>:
+        <a href="/">o catálogo, o carrinho e o checkout</a> funcionam
+        com JavaScript desligado.
+      </p>
+    </div>
+  </noscript>
+
+  <p class="carregando">Carregando o relatório…</p>
+</main>
+
+<script src="{{ url_for('static', filename='projeto_final/app.js') }}" defer></script>
+
+</body>
+</html>

@@ -1,0 +1,1189 @@
+/* =====================================================================
+   Projeto Final — Torra & Terra
+   Relatório técnico navegável
+
+   Linguagem visual editorial: fundo creme, tinta quase-preta, terracota
+   no destaque e verde só no sucesso. Hierarquia por peso e tamanho de
+   fonte, nunca por caixa colorida. Bordas de 1px.
+
+   É parente do estilo da loja, mas não é o mesmo arquivo: a loja usa
+   Inter e Instrument Serif, e aqui a escolha é DM Serif Display com
+   Outfit — o relatório é documento, não vitrine, e precisa de um corpo
+   de texto confortável em bloco longo.
+
+   Três contextos de leitura, e todos foram testados:
+     - celular (o professor pode abrir no telefone)
+     - projetor (contraste alto e corpo de texto grande)
+     - papel (ver o @media print no fim do arquivo)
+   ===================================================================== */
+
+:root {
+  --creme:      #f7f4ef;   /* fundo de tudo */
+  --papel:      #fffdfa;   /* cartões e blocos destacados */
+  --tinta:      #1a1814;   /* texto principal */
+  --tinta-fraca:#6a625a;   /* texto secundário */
+  --linha:      #e2dcd2;   /* bordas — 1px */
+  --linha-forte:#c9c0b3;
+  --terracota:  #c8502a;   /* destaque, números, links */
+  --terracota-fundo: #fbefe9;
+  --verde:      #2d5a3d;   /* sucesso, conciliação fechada */
+  --verde-fundo:#edf4ee;
+  --vermelho:   #a8321f;   /* falha, rollback */
+  --vermelho-fundo: #fdf0ec;
+
+  --r-sm: 5px;
+  --r-md: 9px;
+  --r-lg: 14px;
+
+  --e-1: 8px;
+  --e-2: 16px;
+  --e-3: 24px;
+  --e-4: 40px;
+  --e-5: 64px;
+  --e-6: 96px;
+
+  --indice: 268px;
+  --leitura: 820px;
+}
+
+* { box-sizing: border-box; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+  /* Âncora do índice não pode encostar no topo da tela. */
+  scroll-padding-top: var(--e-3);
+}
+
+body {
+  margin: 0;
+  background: var(--creme);
+  color: var(--tinta);
+  font-family: "Outfit", system-ui, -apple-system, sans-serif;
+  font-size: 17px;
+  font-weight: 300;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Foco sempre visível. Requisito de acessibilidade, nunca remover. */
+:focus-visible {
+  outline: 2px solid var(--terracota);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+a { color: var(--terracota); }
+a:hover { text-decoration-thickness: 2px; }
+
+strong { font-weight: 600; }
+em { font-style: italic; }
+
+code {
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+  font-size: 0.86em;
+  background: var(--terracota-fundo);
+  color: #8c3a1b;
+  padding: 1px 5px;
+  border-radius: var(--r-sm);
+  word-break: break-word;
+}
+
+.pular {
+  position: absolute;
+  left: -9999px;
+}
+.pular:focus {
+  left: var(--e-2);
+  top: var(--e-2);
+  z-index: 50;
+  background: var(--tinta);
+  color: var(--creme);
+  padding: 10px 16px;
+  border-radius: var(--r-md);
+}
+
+/* =====================================================================
+   Índice lateral
+   ===================================================================== */
+
+.abrir-indice {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 40;
+  background: var(--papel);
+  color: var(--tinta);
+  border: 1px solid var(--linha-forte);
+  border-radius: var(--r-md);
+  padding: 9px 15px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.indice {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: min(86vw, 320px);
+  z-index: 45;
+  background: var(--papel);
+  border-right: 1px solid var(--linha);
+  padding: var(--e-4) var(--e-3);
+  overflow-y: auto;
+
+  /* Fechado por padrão no celular. */
+  transform: translateX(-102%);
+  transition: transform .22s ease;
+}
+.indice.aberto { transform: translateX(0); }
+
+.indice-marca {
+  font-family: "DM Serif Display", Georgia, serif;
+  font-size: 21px;
+  line-height: 1.2;
+  margin: 0 0 var(--e-3);
+  color: var(--tinta);
+}
+.indice-marca-loja {
+  display: block;
+  font-size: 15px;
+  color: var(--tinta-fraca);
+  margin-top: 4px;
+}
+.amp { color: var(--terracota); }
+
+.indice-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: none;
+}
+.indice-lista li { margin: 0; }
+
+.indice-lista a {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: var(--e-1);
+  align-items: baseline;
+  padding: 7px 8px;
+  border-radius: var(--r-sm);
+  color: var(--tinta-fraca);
+  text-decoration: none;
+  font-size: 15px;
+  line-height: 1.35;
+  border-left: 2px solid transparent;
+}
+.indice-lista a:hover {
+  background: var(--creme);
+  color: var(--tinta);
+}
+
+/* A seção que está na tela. O destaque é peso de fonte e uma barra de
+   2px — não um retângulo colorido. */
+.indice-lista a.atual {
+  color: var(--terracota);
+  font-weight: 500;
+  border-left-color: var(--terracota);
+  background: var(--terracota-fundo);
+}
+
+.indice-numero {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--linha-forte);
+  text-align: right;
+}
+.indice-lista a.atual .indice-numero { color: var(--terracota); }
+
+.indice-rodape {
+  margin: var(--e-3) 0 0;
+  padding-top: var(--e-2);
+  border-top: 1px solid var(--linha);
+  font-size: 14px;
+}
+.indice-rodape a { text-decoration: none; }
+
+/* =====================================================================
+   Corpo do relatório
+   ===================================================================== */
+
+.relatorio {
+  max-width: var(--leitura);
+  margin: 0 auto;
+  padding: var(--e-5) var(--e-2) var(--e-6);
+}
+
+.carregando {
+  color: var(--tinta-fraca);
+  font-style: italic;
+}
+
+/* --- Capa --------------------------------------------------------- */
+
+.capa {
+  padding-bottom: var(--e-4);
+  margin-bottom: var(--e-5);
+  border-bottom: 1px solid var(--linha);
+}
+
+.capa-disciplina {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--tinta-fraca);
+  margin: 0 0 var(--e-2);
+}
+
+.capa-titulo {
+  font-family: "DM Serif Display", Georgia, serif;
+  font-size: clamp(38px, 9vw, 68px);
+  line-height: 1.02;
+  font-weight: 400;
+  margin: 0 0 var(--e-2);
+  letter-spacing: -0.015em;
+}
+.capa-marca {
+  display: block;
+  font-size: clamp(22px, 5vw, 36px);
+  color: var(--tinta-fraca);
+  margin-top: 10px;
+}
+
+.capa-subtitulo {
+  font-size: 19px;
+  color: var(--tinta-fraca);
+  margin: 0 0 var(--e-3);
+}
+
+.capa-faixa {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--terracota);
+  margin: 0 0 var(--e-3);
+  padding: var(--e-1) 0;
+  border-top: 1px solid var(--linha);
+  border-bottom: 1px solid var(--linha);
+}
+.capa-faixa .sep { margin: 0 10px; color: var(--linha-forte); }
+
+.capa-ficha {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px var(--e-2);
+  margin: 0 0 var(--e-3);
+  font-size: 15px;
+}
+.capa-ficha dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--tinta-fraca);
+  padding-top: 4px;
+}
+.capa-ficha dd { margin: 0; }
+
+.capa-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--e-1);
+  margin: 0 0 var(--e-3);
+}
+.capa-link {
+  display: inline-block;
+  border: 1px solid var(--linha-forte);
+  border-radius: var(--r-md);
+  padding: 7px 14px;
+  font-size: 14px;
+  text-decoration: none;
+  background: var(--papel);
+}
+.capa-link:hover { border-color: var(--terracota); }
+
+/* O aviso que o manual cobra: a versão navegável COMPLEMENTA o
+   relatório em documento, não o substitui. */
+.capa-aviso {
+  background: var(--terracota-fundo);
+  border-left: 2px solid var(--terracota);
+  padding: var(--e-2);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  font-size: 15px;
+  margin: 0 0 var(--e-3);
+}
+
+.capa-corpo { margin-top: var(--e-3); }
+
+/* --- Seções ------------------------------------------------------- */
+
+.secao {
+  margin-bottom: var(--e-6);
+  /* Compensa o índice fixo quando se chega por âncora. */
+  scroll-margin-top: var(--e-3);
+}
+
+.secao-titulo {
+  font-family: "DM Serif Display", Georgia, serif;
+  font-size: clamp(27px, 5vw, 38px);
+  font-weight: 400;
+  line-height: 1.15;
+  margin: 0 0 var(--e-3);
+  padding-bottom: var(--e-2);
+  border-bottom: 1px solid var(--linha);
+  display: flex;
+  align-items: baseline;
+  gap: var(--e-2);
+}
+.secao-numero {
+  font-family: "Outfit", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--terracota);
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--terracota);
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+h3.sub {
+  font-size: 20px;
+  font-weight: 600;
+  margin: var(--e-4) 0 var(--e-1);
+  color: var(--tinta);
+}
+
+h4, h5 { margin: var(--e-3) 0 var(--e-1); }
+
+.bloco-texto p { margin: 0 0 var(--e-2); }
+
+.bloco-lista {
+  margin: 0 0 var(--e-3);
+  padding-left: var(--e-3);
+}
+.bloco-lista li { margin-bottom: 10px; }
+.bloco-lista li::marker { color: var(--terracota); }
+
+/* --- Tabelas ------------------------------------------------------ */
+
+.bloco-tabela {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 0 var(--e-3);
+  border: 1px solid var(--linha);
+  border-radius: var(--r-md);
+  background: var(--papel);
+}
+
+.bloco-tabela table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+
+.bloco-tabela caption {
+  caption-side: top;
+  text-align: left;
+  padding: var(--e-2) var(--e-2) var(--e-1);
+  font-size: 14px;
+  color: var(--tinta-fraca);
+}
+
+.bloco-tabela th,
+.bloco-tabela td {
+  text-align: left;
+  vertical-align: top;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--linha);
+  line-height: 1.5;
+}
+
+.bloco-tabela thead th {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--tinta-fraca);
+  border-bottom: 1px solid var(--linha-forte);
+  white-space: nowrap;
+  background: var(--creme);
+  position: sticky;
+  top: 0;
+}
+
+.bloco-tabela tbody th { font-weight: 500; }
+.bloco-tabela tbody tr:last-child th,
+.bloco-tabela tbody tr:last-child td { border-bottom: none; }
+
+/* --- Código ------------------------------------------------------- */
+
+.bloco-codigo {
+  margin: 0 0 var(--e-3);
+  position: relative;
+}
+
+.etiqueta-ling {
+  display: inline-block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--tinta-fraca);
+  background: var(--creme);
+  border: 1px solid var(--linha);
+  border-bottom: none;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  padding: 3px 10px;
+}
+
+.bloco-codigo pre {
+  margin: 0;
+  background: var(--tinta);
+  color: #f0ece5;
+  border-radius: 0 var(--r-md) var(--r-md) var(--r-md);
+  padding: var(--e-2);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  font-size: 13.5px;
+  line-height: 1.62;
+}
+.bloco-codigo pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+  white-space: pre;
+}
+
+.bloco-codigo figcaption,
+.bloco-figura figcaption {
+  font-size: 14px;
+  color: var(--tinta-fraca);
+  margin-top: var(--e-1);
+  padding-left: var(--e-1);
+  border-left: 2px solid var(--linha);
+  line-height: 1.55;
+}
+
+/* --- Figuras ------------------------------------------------------ */
+
+.bloco-figura { margin: 0 0 var(--e-3); }
+.bloco-figura img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--linha);
+  border-radius: var(--r-md);
+  background: var(--papel);
+}
+.comprova {
+  display: block;
+  margin-top: 6px;
+  color: var(--verde);
+}
+
+/* --- Avisos de dado ----------------------------------------------- */
+
+.aviso-dado {
+  background: var(--vermelho-fundo);
+  border-left: 2px solid var(--vermelho);
+  color: var(--vermelho);
+  padding: var(--e-2);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  font-size: 15px;
+}
+
+.falha-geral {
+  background: var(--papel);
+  border: 1px solid var(--linha);
+  border-radius: var(--r-lg);
+  padding: var(--e-4);
+}
+.falha-geral h1 {
+  font-family: "DM Serif Display", Georgia, serif;
+  font-weight: 400;
+  margin-top: 0;
+}
+
+/* =====================================================================
+   Componentes interativos
+   ===================================================================== */
+
+.interativo {
+  background: var(--papel);
+  border: 1px solid var(--linha);
+  border-radius: var(--r-lg);
+  padding: var(--e-3);
+  margin: var(--e-3) 0 var(--e-4);
+}
+
+.interativo-topo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--e-2);
+  margin-bottom: var(--e-2);
+}
+
+.interativo-titulo {
+  font-family: "DM Serif Display", Georgia, serif;
+  font-size: 23px;
+  font-weight: 400;
+  margin: 0 0 var(--e-1);
+}
+
+.interativo-nota {
+  font-size: 14.5px;
+  color: var(--tinta-fraca);
+  margin: 0 0 var(--e-2);
+  line-height: 1.6;
+}
+.interativo-nota-forte {
+  background: var(--creme);
+  border-radius: var(--r-md);
+  padding: var(--e-2);
+  color: var(--tinta);
+}
+
+.botao-alternar {
+  align-self: flex-start;
+  background: var(--terracota);
+  color: #fff;
+  border: none;
+  border-radius: var(--r-md);
+  padding: 11px 20px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.botao-alternar:hover { background: #ad4220; }
+
+.botao-discreto {
+  background: transparent;
+  color: var(--tinta);
+  border: 1px solid var(--linha-forte);
+  border-radius: var(--r-md);
+  padding: 10px 16px;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.botao-discreto:hover { border-color: var(--terracota); color: var(--terracota); }
+
+/* --- 1. AS IS / TO BE --------------------------------------------- */
+
+.fluxo-titulo {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+.fluxo-resumo {
+  margin: 0 0 var(--e-3);
+  color: var(--tinta-fraca);
+  font-size: 15px;
+}
+
+.fluxo-passos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: passo;
+}
+
+.passo {
+  counter-increment: passo;
+  position: relative;
+  padding: var(--e-2) var(--e-2) var(--e-2) var(--e-4);
+  border-left: 2px solid var(--linha-forte);
+  background: var(--creme);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  margin-bottom: 6px;
+}
+.passo::before {
+  content: counter(passo);
+  position: absolute;
+  left: 12px;
+  top: var(--e-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--tinta-fraca);
+  font-weight: 500;
+}
+
+/* A cor da borda é o que diferencia os dois fluxos: vermelho onde há
+   falha, verde onde há ponto de validação. */
+.fluxo-atual .passo { border-left-color: var(--vermelho); }
+.fluxo-novo  .passo { border-left-color: var(--verde); }
+
+.passo-ator {
+  display: inline-block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--tinta-fraca);
+  margin-bottom: 4px;
+}
+.passo-acao { margin: 0; font-size: 16px; }
+
+.passo-problema,
+.passo-validacao {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.passo-problema { color: var(--vermelho); }
+.passo-validacao { color: var(--verde); }
+
+/* --- 2. Diagrama ER ----------------------------------------------- */
+
+.er-atalhos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: var(--e-2);
+}
+.er-atalho {
+  background: transparent;
+  border: 1px solid var(--linha-forte);
+  border-radius: var(--r-md);
+  padding: 7px 13px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--tinta);
+}
+.er-atalho:hover { border-color: var(--terracota); }
+.er-atalho.ativo {
+  background: var(--terracota);
+  border-color: var(--terracota);
+  color: #fff;
+}
+
+.er-moldura {
+  background: var(--creme);
+  border: 1px solid var(--linha);
+  border-radius: var(--r-md);
+  padding: var(--e-2);
+  margin-bottom: var(--e-3);
+}
+
+.er-svg { width: 100%; height: auto; display: block; }
+
+.er-linha { stroke: var(--linha-forte); stroke-width: 1.5; }
+.er-cardinalidade {
+  font-family: "Outfit", sans-serif;
+  font-size: 10px;
+  fill: var(--tinta-fraca);
+}
+
+.er-caixa { cursor: pointer; }
+.er-caixa rect {
+  fill: var(--papel);
+  stroke: var(--linha-forte);
+  stroke-width: 1;
+  transition: stroke .15s ease;
+}
+.er-caixa:hover rect { stroke: var(--terracota); }
+.er-caixa.ativa rect {
+  stroke: var(--terracota);
+  stroke-width: 2;
+  fill: var(--terracota-fundo);
+}
+.er-caixa:focus-visible rect { stroke: var(--terracota); stroke-width: 2; }
+
+.er-titulo {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  fill: var(--tinta);
+}
+.er-coluna {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  fill: var(--tinta-fraca);
+}
+.er-mais { font-style: italic; fill: var(--terracota); }
+
+.er-detalhe-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--e-2);
+  margin-bottom: var(--e-1);
+}
+.er-nome {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 19px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--terracota);
+}
+.er-papel { margin: 0; color: var(--tinta-fraca); font-size: 15px; }
+
+.er-nota {
+  background: var(--creme);
+  border-left: 2px solid var(--terracota);
+  padding: var(--e-2);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  font-size: 15px;
+  margin: 0 0 var(--e-2);
+}
+
+.er-sub {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--tinta-fraca);
+  margin: var(--e-2) 0 var(--e-1);
+}
+.er-sem-indice { font-size: 14px; color: var(--tinta-fraca); }
+
+/* --- 3. Simulação do checkout ------------------------------------- */
+
+/* O selo existe porque o manual proíbe apresentar mockup como tela
+   implementada. Ele tem que ser impossível de não ver. */
+.selo-simulacao {
+  background: #fff8e6;
+  border: 1px solid #e0c073;
+  border-radius: var(--r-md);
+  padding: var(--e-2);
+  font-size: 14.5px;
+  margin: 0 0 var(--e-3);
+  line-height: 1.6;
+}
+.selo-simulacao strong {
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: #8a6212;
+}
+
+.pista {
+  display: grid;
+  gap: 6px;
+  margin-bottom: var(--e-2);
+}
+
+.faixa {
+  border: 1px solid var(--linha);
+  border-left: 3px solid var(--linha-forte);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  padding: var(--e-2);
+  background: var(--creme);
+  transition: border-color .2s ease, background .2s ease;
+}
+.faixa-nome {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--tinta-fraca);
+  margin-bottom: 4px;
+}
+.faixa-acao {
+  margin: 0;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 14px;
+  min-height: 1.5em;
+}
+
+.faixa.ativa {
+  border-left-color: var(--verde);
+  background: var(--verde-fundo);
+}
+.faixa.esperando {
+  border-left-color: #c98a1a;
+  background: #fff8e6;
+}
+.faixa.falhou {
+  border-left-color: var(--vermelho);
+  background: var(--vermelho-fundo);
+}
+.faixa-banco {
+  border-left-color: var(--tinta);
+  background: var(--papel);
+}
+
+.narracao {
+  min-height: 3.4em;
+  font-size: 15.5px;
+  margin: 0 0 var(--e-2);
+  padding: var(--e-2);
+  background: var(--creme);
+  border-radius: var(--r-md);
+  line-height: 1.6;
+}
+
+.controles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--e-1);
+  margin-bottom: var(--e-1);
+}
+
+.marcador-passo {
+  font-size: 13px;
+  color: var(--tinta-fraca);
+  font-variant-numeric: tabular-nums;
+  margin: 0 0 var(--e-3);
+}
+
+.fecho-simulacao {
+  border-top: 1px solid var(--linha);
+  padding-top: var(--e-3);
+}
+.fecho-rotulo {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--tinta-fraca);
+  margin: 0 0 6px;
+}
+.fecho-mensagem {
+  background: var(--vermelho-fundo);
+  border-left: 2px solid var(--vermelho);
+  color: var(--vermelho);
+  padding: var(--e-2);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  margin: 0 0 var(--e-2);
+  font-size: 15.5px;
+}
+.fecho-prova { margin: 0; font-size: 14.5px; color: var(--tinta-fraca); }
+
+/* --- 4. EXPLAIN --------------------------------------------------- */
+
+.explain-caso,
+.explain-preco {
+  border-top: 1px solid var(--linha);
+  padding-top: var(--e-3);
+  margin-top: var(--e-3);
+}
+.explain-caso:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+
+.explain-nome { font-size: 18px; font-weight: 600; margin: 0 0 var(--e-2); }
+
+.explain-par {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--e-2);
+  margin-bottom: var(--e-2);
+}
+
+.explain-lado {
+  border: 1px solid var(--linha);
+  border-radius: var(--r-md);
+  padding: var(--e-2);
+  background: var(--creme);
+}
+.explain-antes  { border-top: 3px solid var(--vermelho); }
+.explain-depois { border-top: 3px solid var(--verde); }
+
+.explain-lado-titulo {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--tinta-fraca);
+  margin: 0 0 var(--e-1);
+}
+
+.explain-lado pre {
+  margin: 0 0 var(--e-1);
+  overflow-x: auto;
+  background: var(--tinta);
+  color: #f0ece5;
+  border-radius: var(--r-sm);
+  padding: var(--e-2);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+.explain-lado pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+
+.explain-tempo {
+  margin: 0;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 17px;
+  font-weight: 600;
+}
+.explain-antes .explain-tempo  { color: var(--vermelho); }
+.explain-depois .explain-tempo { color: var(--verde); }
+
+.explain-ganho {
+  font-family: "DM Serif Display", Georgia, serif;
+  font-size: 26px;
+  color: var(--verde);
+  margin: 0 0 var(--e-1);
+}
+.explain-licao { font-size: 15.5px; margin: 0; line-height: 1.65; }
+
+/* --- 5. Indicadores ao vivo --------------------------------------- */
+
+.grade-vivos {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--e-2);
+  margin-bottom: var(--e-3);
+}
+
+.cartao-vivo {
+  border: 1px solid var(--linha);
+  border-radius: var(--r-md);
+  padding: var(--e-2);
+  background: var(--creme);
+}
+.cartao-vivo p { margin: 0; }
+
+.cartao-rotulo {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--tinta-fraca);
+}
+.cartao-valor {
+  font-family: "DM Serif Display", Georgia, serif;
+  font-size: 34px;
+  line-height: 1.1;
+  margin: 4px 0 !important;
+}
+.cartao-ajuda { font-size: 13px; color: var(--tinta-fraca); line-height: 1.45; }
+
+.cartao-ok {
+  border-color: var(--verde);
+  background: var(--verde-fundo);
+}
+.cartao-ok .cartao-valor { color: var(--verde); }
+.cartao-alerta {
+  border-color: var(--vermelho);
+  background: var(--vermelho-fundo);
+}
+.cartao-alerta .cartao-valor { color: var(--vermelho); }
+
+.barras-vivas { list-style: none; margin: 0; padding: 0; }
+.barra-viva {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  margin-bottom: var(--e-2);
+}
+.barra-rotulo { font-size: 15px; }
+.barra-trilho {
+  display: block;
+  height: 10px;
+  background: var(--linha);
+  border-radius: 5px;
+  overflow: hidden;
+}
+/* A largura vem do app.js por CSSOM — a CSP bloqueia style= escrito no
+   HTML, mas não o objeto style de um elemento. */
+.barra-cheia {
+  display: block;
+  height: 100%;
+  background: var(--terracota);
+  border-radius: 5px;
+  transition: width .5s ease;
+}
+.barra-valor {
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  color: var(--tinta-fraca);
+}
+
+.indicadores-erro {
+  background: var(--vermelho-fundo);
+  border: 1px solid var(--vermelho);
+  border-radius: var(--r-md);
+  padding: var(--e-2);
+}
+.erro-titulo { font-weight: 600; color: var(--vermelho); margin: 0 0 6px; }
+.erro-detalhe {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 13px;
+  margin: 0 0 var(--e-1);
+  word-break: break-word;
+}
+.erro-ajuda { font-size: 14px; color: var(--tinta-fraca); margin: 0 0 var(--e-2); }
+
+.atualizado {
+  font-size: 13px;
+  color: var(--tinta-fraca);
+  padding-top: var(--e-2);
+  border-top: 1px solid var(--linha);
+  margin: 0;
+}
+
+/* --- 6. Tabela de testes ------------------------------------------ */
+
+.filtros-teste {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: var(--e-1);
+}
+.filtro-teste {
+  background: transparent;
+  border: 1px solid var(--linha-forte);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+  color: var(--tinta);
+}
+.filtro-teste:hover { border-color: var(--terracota); }
+.filtro-teste.ativo {
+  background: var(--tinta);
+  border-color: var(--tinta);
+  color: var(--creme);
+}
+
+.contagem-teste {
+  font-size: 13px;
+  color: var(--tinta-fraca);
+  margin: 0 0 var(--e-2);
+}
+
+.tabela-testes .bloco-tabela { background: var(--creme); }
+.tabela-testes table { font-size: 14px; }
+
+/* --- Rodapé ------------------------------------------------------- */
+
+.rodape-relatorio {
+  border-top: 1px solid var(--linha);
+  padding-top: var(--e-3);
+  margin-top: var(--e-5);
+  font-size: 14px;
+  color: var(--tinta-fraca);
+}
+.rodape-relatorio p { margin: 0 0 4px; }
+.rodape-volta { margin-top: var(--e-2) !important; }
+
+/* =====================================================================
+   Telas maiores
+   ===================================================================== */
+
+@media (min-width: 560px) {
+  .grade-vivos { grid-template-columns: repeat(2, 1fr); }
+  .barra-viva {
+    grid-template-columns: 170px 1fr 62px;
+    align-items: center;
+    gap: var(--e-2);
+  }
+  .interativo-topo { flex-direction: row; align-items: center; justify-content: space-between; }
+  .pista { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (min-width: 900px) {
+  .explain-par { grid-template-columns: 1fr 1fr; }
+}
+
+/* A partir daqui o índice é permanente e o conteúdo abre espaço para ele. */
+@media (min-width: 1080px) {
+  .abrir-indice { display: none; }
+
+  .indice {
+    width: var(--indice);
+    transform: none;
+    border-right: 1px solid var(--linha);
+    padding-top: var(--e-5);
+  }
+
+  .relatorio {
+    margin-left: var(--indice);
+    padding-left: var(--e-5);
+    padding-right: var(--e-4);
+  }
+
+  .grade-vivos { grid-template-columns: repeat(4, 1fr); }
+  body { font-size: 17.5px; }
+}
+
+@media (min-width: 1500px) {
+  /* Centraliza a coluna de leitura em tela larga, em vez de deixá-la
+     colada no índice. */
+  .relatorio {
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: var(--e-3);
+  }
+}
+
+/* Quem pediu menos animação no sistema não deve receber nenhuma. */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* =====================================================================
+   Impressão
+   O relatório precisa sair em papel: é documento de disciplina.
+   ===================================================================== */
+
+@media print {
+  :root {
+    --creme: #fff;
+    --papel: #fff;
+    --tinta: #000;
+    --tinta-fraca: #444;
+    --linha: #bbb;
+    --linha-forte: #888;
+  }
+
+  body { font-size: 10.5pt; line-height: 1.5; }
+
+  /* Fora do papel: navegação, botões e qualquer controle. */
+  .indice, .abrir-indice, .pular,
+  .controles, .filtros-teste, .er-atalhos,
+  .botao-alternar, .botao-discreto, .capa-links,
+  .indicadores-erro button { display: none !important; }
+
+  .relatorio {
+    margin: 0;
+    padding: 0;
+    max-width: none;
+  }
+
+  .capa { page-break-after: always; }
+
+  .secao { page-break-before: always; margin-bottom: var(--e-3); }
+  .secao-titulo, .interativo-titulo, h3.sub, .explain-nome {
+    page-break-after: avoid;
+  }
+
+  .interativo, .bloco-tabela, .bloco-codigo, .explain-caso,
+  .cartao-vivo, .passo, .faixa {
+    page-break-inside: avoid;
+    border-color: #bbb;
+  }
+
+  /* Código em papel: tinta preta sobre branco, com borda. */
+  .bloco-codigo pre, .explain-lado pre {
+    background: #f6f6f6 !important;
+    color: #000 !important;
+    border: 1px solid #ccc;
+    font-size: 8.5pt;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  code { background: none; color: #000; border: 1px solid #ddd; }
+
+  /* O endereço de cada link, já que no papel não há o que clicar. */
+  .bloco-texto a::after,
+  .bloco-lista a::after {
+    content: " (" attr(href) ")";
+    font-size: 8.5pt;
+    color: #555;
+    word-break: break-all;
+  }
+
+  .barra-cheia { background: #666 !important; }
+  .er-caixa rect { fill: #fff !important; stroke: #666 !important; }
+
+  .explain-par { grid-template-columns: 1fr 1fr; }
+}
