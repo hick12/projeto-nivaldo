@@ -128,6 +128,237 @@
   }
 
   /* -------------------------------------------------------------------
+     Movimento
+
+     Regra que vale para tudo aqui: quem pediu menos animação no sistema
+     operacional não recebe nenhuma. `prefers-reduced-motion` não é
+     preferência estética — para parte das pessoas, movimento na tela
+     causa enjoo de verdade. A página precisa continuar INTEIRA sem as
+     animações: os números aparecem no valor final, as seções aparecem
+     visíveis, o brilho do cursor não existe.
+     ------------------------------------------------------------------- */
+
+  var MOVIMENTO_OK = !(
+    window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+
+  /** Lê um tempo em milissegundos de um texto tipo "6,713 ms". */
+  function msDoTexto(texto) {
+    var achado = String(texto || '').replace(',', '.').match(/[\d.]+/);
+    return achado ? parseFloat(achado[0]) : null;
+  }
+
+  /**
+   * Conta de zero até o valor, com desaceleração.
+   *
+   * O número do indicador é o que o olho procura primeiro. Vê-lo subir
+   * diz, sem texto nenhum, que aquilo foi LIDO agora — e não escrito na
+   * página.
+   */
+  function animarNumero(elemento, valor, sufixo) {
+    sufixo = sufixo || '';
+    var alvo = Number(valor) || 0;
+
+    if (!MOVIMENTO_OK || alvo === 0) {
+      elemento.textContent = alvo + sufixo;
+      return;
+    }
+
+    var duracao = 900;
+    var comeco = null;
+
+    function passo(agora) {
+      if (comeco === null) { comeco = agora; }
+      var fracao = Math.min(1, (agora - comeco) / duracao);
+      // easeOutCubic: rápido no início, freia no fim.
+      var suave = 1 - Math.pow(1 - fracao, 3);
+      elemento.textContent = Math.round(alvo * suave) + sufixo;
+      if (fracao < 1) { requestAnimationFrame(passo); }
+    }
+
+    requestAnimationFrame(passo);
+  }
+
+  /**
+   * Zera a largura e deixa a transição do CSS levá-la de volta ao valor.
+   *
+   * Os dois requestAnimationFrame não são superstição: sem eles o
+   * navegador junta as duas escritas no mesmo quadro, conclui que a
+   * largura não mudou e não dispara transição nenhuma. O primeiro quadro
+   * compromete o zero; o segundo começa o caminho de volta.
+   */
+  function animarLargura(elemento, porcento) {
+    elemento.style.setProperty('width', '0%');
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        elemento.style.setProperty('width', porcento + '%');
+      });
+    });
+  }
+
+  /**
+   * Faz algo acontecer quando o elemento entra na tela, uma vez só.
+   *
+   * IntersectionObserver em vez de ouvir o scroll: o navegador avisa
+   * quando cruza o limiar, sem a página recalcular posição a cada pixel.
+   * No projetor e no celular a diferença se sente.
+   */
+  /**
+   * Margem que dispara ANTES de o elemento aparecer — 240px abaixo da
+   * dobra. Usada por tudo que precisa se reiniciar em zero para animar:
+   * o reinício acontece fora da vista, e quando o elemento chega o
+   * movimento já está em curso. Sem isso, dá para ver o número final
+   * piscar e saltar para zero.
+   */
+  var PRESTES_A_ENTRAR = '0px 0px 240px 0px';
+
+  function aoEntrarNaTela(elemento, acao, margem) {
+    if (!('IntersectionObserver' in window)) { acao(); return; }
+
+    var observador = new IntersectionObserver(function (entradas) {
+      entradas.forEach(function (entrada) {
+        if (!entrada.isIntersecting) { return; }
+        observador.unobserve(entrada.target);
+        acao(entrada.target);
+      });
+    }, { rootMargin: margem || '0px 0px -12% 0px', threshold: 0.15 });
+
+    observador.observe(elemento);
+  }
+
+  /**
+   * Um brilho quente que segue o cursor.
+   *
+   * É enfeite, e está declarado como tal. Fica atrás de todo o conteúdo,
+   * não intercepta clique nenhum (`pointer-events: none`) e some no
+   * celular, onde não há cursor para seguir. A posição vai por variável
+   * CSS definida por script — a CSP bloqueia `style=` escrito no HTML,
+   * mas não o objeto `style` de um elemento.
+   */
+  function ligarBrilhoDoCursor() {
+    if (!MOVIMENTO_OK) { return; }
+    if (!window.matchMedia('(pointer: fine)').matches) { return; }
+
+    var brilho = elemento('div', 'brilho-cursor');
+    brilho.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(brilho);
+
+    var alvoX = window.innerWidth / 2;
+    var alvoY = window.innerHeight / 3;
+    var x = alvoX;
+    var y = alvoY;
+    var rodando = false;
+
+    document.addEventListener('pointermove', function (evento) {
+      alvoX = evento.clientX;
+      alvoY = evento.clientY;
+      if (!rodando) { rodando = true; requestAnimationFrame(seguir); }
+    }, { passive: true });
+
+    function seguir() {
+      // Interpolação: o brilho ARRASTA atrás do cursor em vez de colar
+      // nele. Colado parece defeito de renderização; atrasado parece luz.
+      x += (alvoX - x) * 0.12;
+      y += (alvoY - y) * 0.12;
+
+      brilho.style.setProperty('--x', x.toFixed(1) + 'px');
+      brilho.style.setProperty('--y', y.toFixed(1) + 'px');
+
+      if (Math.abs(alvoX - x) > 0.5 || Math.abs(alvoY - y) > 0.5) {
+        requestAnimationFrame(seguir);
+      } else {
+        rodando = false;
+      }
+    }
+  }
+
+  /** Barra fina no topo, com a fração já lida do relatório. */
+  function ligarBarraDeProgresso() {
+    var barra = elemento('div', 'progresso-leitura');
+    barra.setAttribute('aria-hidden', 'true');
+    var cheia = elemento('div', 'progresso-cheia');
+    barra.appendChild(cheia);
+    document.body.appendChild(barra);
+
+    var agendado = false;
+
+    function medir() {
+      agendado = false;
+      var altura = document.documentElement.scrollHeight - window.innerHeight;
+      var fracao = altura > 0 ? window.scrollY / altura : 0;
+      cheia.style.setProperty(
+        'transform', 'scaleX(' + Math.max(0, Math.min(1, fracao)).toFixed(4) + ')'
+      );
+    }
+
+    window.addEventListener('scroll', function () {
+      // Uma medição por quadro, no máximo. Sem isto, o evento de scroll
+      // dispara dezenas de vezes por segundo e cada uma força layout.
+      if (!agendado) { agendado = true; requestAnimationFrame(medir); }
+    }, { passive: true });
+
+    window.addEventListener('resize', medir, { passive: true });
+    medir();
+  }
+
+  /** Blocos sobem e aparecem conforme entram na tela. */
+  function ligarRevelacao() {
+    var alvos = document.querySelectorAll(
+      '.secao > .bloco-texto, .secao > .bloco-lista, .secao > .bloco-tabela,' +
+      '.secao > .bloco-codigo, .secao > .bloco-figura, .secao > .interativo,' +
+      '.capa-corpo > *'
+    );
+
+    alvos.forEach(function (alvo) {
+      if (!MOVIMENTO_OK) { alvo.classList.add('revelado'); return; }
+      alvo.classList.add('a-revelar');
+      aoEntrarNaTela(alvo, function (el) { el.classList.add('revelado'); });
+    });
+  }
+
+  /**
+   * Navegação por teclado entre as seções.
+   *
+   * Quem apresenta no projetor não quer rolar com o mouse. As setas e o
+   * j/k do Vim pulam de seção em seção.
+   */
+  function ligarTeclado() {
+    document.addEventListener('keydown', function (evento) {
+      if (evento.ctrlKey || evento.metaKey || evento.altKey) { return; }
+
+      // Nunca sequestrar digitação num campo.
+      var foco = document.activeElement;
+      if (foco && /^(INPUT|TEXTAREA|SELECT)$/.test(foco.tagName)) { return; }
+
+      var adiante = ['ArrowRight', 'ArrowDown', 'j', 'J'];
+      var atras = ['ArrowLeft', 'ArrowUp', 'k', 'K'];
+      var direcao = adiante.indexOf(evento.key) >= 0 ? 1
+        : (atras.indexOf(evento.key) >= 0 ? -1 : 0);
+      if (!direcao) { return; }
+
+      // Deixa a seta rolar normalmente dentro de algo que rola sozinho.
+      if (foco && foco.closest && foco.closest('.bloco-tabela, pre')) { return; }
+
+      var secoes = [].slice.call(document.querySelectorAll('.capa, .secao'));
+      var topoAtual = window.scrollY + 90;
+      var indice = 0;
+      secoes.forEach(function (s, i) {
+        if (s.offsetTop <= topoAtual) { indice = i; }
+      });
+
+      var destino = secoes[Math.max(0, Math.min(secoes.length - 1, indice + direcao))];
+      if (!destino) { return; }
+
+      evento.preventDefault();
+      destino.scrollIntoView({
+        behavior: MOVIMENTO_OK ? 'smooth' : 'auto',
+        block: 'start',
+      });
+    });
+  }
+
+  /* -------------------------------------------------------------------
      Blocos de conteúdo
      ------------------------------------------------------------------- */
 
@@ -381,9 +612,29 @@
         b.setAttribute('aria-selected', ativo ? 'true' : 'false');
       });
 
-      moldura.querySelectorAll('.er-caixa').forEach(function (g) {
-        g.classList.toggle('ativa', g.dataset.tabela === nome);
+      // A tabela escolhida acende; as que NÃO se relacionam com ela
+      // apagam. É o que transforma o diagrama em explicação: dá para ver
+      // de relance com quem cada tabela conversa.
+      var ligacoes = dados.ligacoes || [];
+      var vizinhas = {};
+      vizinhas[nome] = true;
+      ligacoes.forEach(function (l) {
+        if (l.de === nome) { vizinhas[l.para] = true; }
+        if (l.para === nome) { vizinhas[l.de] = true; }
       });
+
+      moldura.querySelectorAll('.er-caixa').forEach(function (g) {
+        var esta = g.dataset.tabela;
+        g.classList.toggle('ativa', esta === nome);
+        g.classList.toggle('apagada', !vizinhas[esta]);
+      });
+
+      moldura.querySelectorAll('.er-linha, .er-cardinalidade')
+        .forEach(function (el) {
+          var tocada = el.dataset.de === nome || el.dataset.para === nome;
+          el.classList.toggle('realcada', tocada);
+          el.classList.toggle('apagada', !tocada);
+        });
 
       detalhe.textContent = '';
 
@@ -437,7 +688,23 @@
       g.addEventListener('click', function () {
         selecionar(g.dataset.tabela);
       });
+      // Teclado: o diagrama é navegável por Tab, e Enter/espaço abrem a
+      // tabela. Diagrama clicável sem isso exclui quem não usa mouse.
+      g.addEventListener('keydown', function (evento) {
+        if (evento.key === 'Enter' || evento.key === ' ') {
+          evento.preventDefault();
+          selecionar(g.dataset.tabela);
+        }
+      });
     });
+
+    // As linhas de ligação se desenham quando o diagrama entra na tela.
+    if (MOVIMENTO_OK) {
+      var svg = moldura.querySelector('.er-svg');
+      if (svg) {
+        aoEntrarNaTela(moldura, function () { svg.classList.add('tracando'); });
+      }
+    }
 
     if (tabelas.length) { selecionar(tabelas[0].nome); }
   }
@@ -503,10 +770,18 @@
       var bx = b.x + b.w / 2;
       var by = b.y + alturas[b.nome] / 2;
 
+      // pathLength="100" normaliza o comprimento da linha para 100
+      // unidades, qualquer que seja o tamanho real. Com isso o
+      // stroke-dasharray do CSS desenha todas na mesma velocidade, sem
+      // o script precisar medir cada uma — e sem `style=` escrito na
+      // marcação, que a CSP descartaria.
+      var ligadas = ' data-de="' + escapar(ligacao.de) +
+        '" data-para="' + escapar(ligacao.para) + '"';
+
       partes.push(
-        '<line class="er-linha" x1="' + ax + '" y1="' + ay +
-        '" x2="' + bx + '" y2="' + by + '"></line>',
-        '<text class="er-cardinalidade" x="' + ((ax + bx) / 2) +
+        '<line class="er-linha"' + ligadas + ' pathLength="100" x1="' + ax +
+        '" y1="' + ay + '" x2="' + bx + '" y2="' + by + '"></line>',
+        '<text class="er-cardinalidade"' + ligadas + ' x="' + ((ax + bx) / 2) +
         '" y="' + ((ay + by) / 2 - 4) + '" text-anchor="middle">' +
         escapar(ligacao.rotulo || '') + '</text>'
       );
@@ -571,13 +846,21 @@
 
     var pista = elemento('div', 'pista');
     pista.innerHTML =
-      '<div class="faixa faixa-ana"><span class="faixa-nome">Ana</span>' +
+      '<div class="faixa faixa-ana">' +
+      '<span class="faixa-nome">Ana <span class="cadeado" hidden>🔒</span></span>' +
       '<p class="faixa-acao"></p></div>' +
-      '<div class="faixa faixa-bruno"><span class="faixa-nome">Bruno</span>' +
+
+      '<div class="faixa faixa-bruno">' +
+      '<span class="faixa-nome">Bruno <span class="cadeado" hidden>🔒</span></span>' +
       '<p class="faixa-acao"></p></div>' +
+
       '<div class="faixa faixa-banco"><span class="faixa-nome">' +
       escapar(dados.cafe || 'produto') + ' — no banco</span>' +
-      '<p class="faixa-acao"></p></div>';
+      '<p class="faixa-acao"></p>' +
+      // O contador de estoque é o que torna a disputa visível: é o
+      // número que as duas transações querem, e ele só muda no COMMIT.
+      '<p class="estoque-vivo"><span class="estoque-rotulo">estoque</span>' +
+      '<span class="estoque-numero">—</span></p></div>';
     caixa.appendChild(pista);
 
     var narracao = elemento('p', 'narracao');
@@ -597,6 +880,8 @@
     var marcador = elemento('p', 'marcador-passo');
     caixa.appendChild(marcador);
 
+    var estoqueMostrado = null;
+
     function desenhar() {
       var passo = passos[atual] || {};
       var faixas = pista.querySelectorAll('.faixa-acao');
@@ -613,6 +898,35 @@
         (/esperando|ESPERANDO/.test(passo.bruno || '') ? ' esperando' :
           (/ROLLBACK/.test(passo.bruno || '') ? ' falhou' :
             (passo.bruno ? ' ativa' : '')));
+
+      // O cadeado aparece em quem está segurando a linha. É o FOR UPDATE
+      // desenhado: enquanto ele está num lado, o outro não lê.
+      var cadeados = pista.querySelectorAll('.cadeado');
+      cadeados[0].hidden = passo.trava !== 'ana';
+      cadeados[1].hidden = passo.trava !== 'bruno';
+
+      // O estoque só muda quando alguém faz COMMIT — e é exatamente esse
+      // o ponto da simulação.
+      var numero = pista.querySelector('.estoque-numero');
+      var saldo = (passo.estoque === undefined || passo.estoque === null)
+        ? null : Number(passo.estoque);
+
+      if (saldo === null) {
+        numero.textContent = '—';
+      } else {
+        numero.textContent = String(saldo);
+        if (MOVIMENTO_OK && estoqueMostrado !== null && estoqueMostrado !== saldo) {
+          // Pisca só quando o número REALMENTE mudou.
+          numero.classList.remove('mudou');
+          void numero.offsetWidth;   // força o reinício da animação
+          numero.classList.add('mudou');
+        }
+        estoqueMostrado = saldo;
+      }
+
+      pista.querySelector('.faixa-banco').classList.toggle(
+        'esgotado', saldo === 0
+      );
 
       narracao.innerHTML = passo.nota ? markdown(passo.nota) : '&nbsp;';
       marcador.textContent = 'Passo ' + (atual + 1) + ' de ' + passos.length;
@@ -637,7 +951,11 @@
 
     btTocar.addEventListener('click', function () {
       if (tocando) { parar(); return; }
-      if (atual >= passos.length - 1) { atual = 0; desenhar(); }
+      if (atual >= passos.length - 1) {
+        atual = 0;
+        estoqueMostrado = null;
+        desenhar();
+      }
       tocando = true;
       btTocar.textContent = '⏸ Pausar';
       relogio = setInterval(avancar, 1900);
@@ -648,6 +966,7 @@
     btZerar.addEventListener('click', function () {
       parar();
       atual = 0;
+      estoqueMostrado = null;
       desenhar();
       btTocar.textContent = '▶ Rodar a simulação';
     });
@@ -698,18 +1017,53 @@
         }));
       }
 
+      // As duas barras comparam os tempos em ESCALA. Ler "6,713 ms" e
+      // "0,900 ms" exige fazer a conta de cabeça; ver uma barra sete
+      // vezes maior que a outra não exige nada. O comprimento sai dos
+      // números reais do EXPLAIN, não de um valor escolhido a dedo.
+      var msAntes = msDoTexto((caso.antes || {}).tempo);
+      var msDepois = msDoTexto((caso.depois || {}).tempo);
+      var maior = Math.max(msAntes || 0, msDepois || 0);
+
       var par = elemento('div', 'explain-par');
-      [['antes', 'explain-antes'], ['depois', 'explain-depois']]
+      [['antes', 'explain-antes', msAntes], ['depois', 'explain-depois', msDepois]]
         .forEach(function (dupla) {
           var lado = caso[dupla[0]] || {};
           var painel = elemento('div', 'explain-lado ' + dupla[1]);
           painel.appendChild(elemento('p', 'explain-lado-titulo', lado.titulo));
+
           var pre = elemento('pre');
           var cod = elemento('code');
           cod.textContent = lado.plano || '';
           pre.appendChild(cod);
           painel.appendChild(pre);
-          painel.appendChild(elemento('p', 'explain-tempo', lado.tempo));
+
+          var rodape = elemento('div', 'explain-rodape');
+          rodape.appendChild(elemento('p', 'explain-tempo', lado.tempo));
+
+          if (dupla[2] !== null && maior > 0) {
+            // Raiz quadrada da proporção: com 7,5x de diferença, a barra
+            // menor ficaria com 1 pixel numa escala linear e não se
+            // leria. A raiz mantém a ordem e devolve a barra pequena ao
+            // campo do visível — e a legenda ao lado traz o número exato,
+            // que é o que vale.
+            var fracao = Number((Math.sqrt(dupla[2] / maior) * 100).toFixed(1));
+            var trilho = elemento('div', 'explain-trilho');
+            var cheia = elemento('div', 'explain-cheia');
+
+            // Largura certa já; o zero só fora da vista.
+            cheia.style.setProperty('width', fracao + '%');
+            trilho.appendChild(cheia);
+            rodape.appendChild(trilho);
+
+            if (MOVIMENTO_OK) {
+              aoEntrarNaTela(painel, function () {
+                animarLargura(cheia, fracao);
+              }, PRESTES_A_ENTRAR);
+            }
+          }
+
+          painel.appendChild(rodape);
           par.appendChild(painel);
         });
       bloco.appendChild(par);
@@ -769,7 +1123,26 @@
     function cartao(rotulo, valor, ajuda) {
       var art = elemento('article', 'cartao-vivo');
       art.appendChild(elemento('p', 'cartao-rotulo', rotulo));
-      art.appendChild(elemento('p', 'cartao-valor', valor));
+
+      var numero = elemento('p', 'cartao-valor');
+      art.appendChild(numero);
+
+      // O valor REAL entra já. Só depois, e só se houver movimento, ele
+      // é reiniciado em zero para contar.
+      //
+      // A ordem importa e custou um defeito: na primeira versão o número
+      // nascia em "0" e só virava o valor certo ao entrar na tela. Quem
+      // imprimisse a página, ou não rolasse até ali, lia `0 pedidos` — um
+      // número ERRADO, não apenas um número sem animação. Animação nunca
+      // pode ser a única coisa que torna o dado correto.
+      numero.textContent = valor;
+
+      if (MOVIMENTO_OK && (typeof valor === 'number' || /^\d+$/.test(String(valor)))) {
+        aoEntrarNaTela(art, function () {
+          animarNumero(numero, Number(valor));
+        }, PRESTES_A_ENTRAR);
+      }
+
       if (ajuda) { art.appendChild(elemento('p', 'cartao-ajuda', ajuda)); }
       return art;
     }
@@ -843,10 +1216,23 @@
 
           var trilho = elemento('span', 'barra-trilho');
           var cheia = elemento('span', 'barra-cheia');
-          // Estilo por CSSOM: a CSP bloqueia style= escrito no HTML,
-          // mas não bloqueia o objeto style de um elemento.
-          cheia.style.setProperty('width', Math.max(0, Math.min(100,
-            Number(r.percentual) || 0)) + '%');
+
+          // Estilo por CSSOM: a CSP bloqueia style= escrito no HTML, mas
+          // não bloqueia o objeto style de um elemento. A barra começa em
+          // zero e cresce quando entra na tela — a transição de largura
+          // está no CSS.
+          // Mesma regra dos números: a largura certa entra já, e o
+          // reinício em zero só acontece fora da vista. Uma barra vazia
+          // na impressão seria um dado errado, não um dado sem animação.
+          var largura = Math.max(0, Math.min(100, Number(r.percentual) || 0));
+          cheia.style.setProperty('width', largura + '%');
+
+          if (MOVIMENTO_OK) {
+            aoEntrarNaTela(li, function () {
+              animarLargura(cheia, largura);
+            }, PRESTES_A_ENTRAR);
+          }
+
           trilho.appendChild(cheia);
           li.appendChild(trilho);
 
@@ -1226,6 +1612,12 @@
         montarIndice(secoes);
         acompanharLeitura();
         ligarMenu();
+
+        // Movimento, por último: tudo acima já funciona sem nada disto.
+        ligarBarraDeProgresso();
+        ligarRevelacao();
+        ligarTeclado();
+        ligarBrilhoDoCursor();
       })
       .catch(function (erro) {
         falhaGeral('Falha ao ler ' + endereco + ': ' +

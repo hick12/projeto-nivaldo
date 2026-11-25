@@ -303,6 +303,31 @@ completa aparece ao clicar.
 
 ---
 
+## Movimento
+
+A página anima quatro coisas, e todas seguem a mesma regra: **nada
+essencial depende de animação.** Com `prefers-reduced-motion` ligado no
+sistema, ou com o script fora do ar, o conteúdo aparece inteiro — os
+números no valor final, as barras cheias, as seções visíveis.
+
+| O que se move | Por quê |
+|---|---|
+| Os números dos indicadores sobem de zero | Diz, sem texto, que aquilo foi **lido agora** e não escrito na página |
+| As linhas do diagrama ER se desenham | Mostra o modelo se montando na ordem em que as tabelas se relacionam |
+| O estoque da simulação pisca quando muda | Ele **só** muda no COMMIT, que é o ponto inteiro daquele componente |
+| As barras do EXPLAIN crescem em escala | Comparar 6,713 ms com 0,900 ms exige conta; ver uma barra maior que a outra não exige nada |
+
+Há também um brilho que segue o cursor. **Esse é enfeite puro**, está
+declarado como tal no código, fica atrás de todo o conteúdo e some no
+celular.
+
+Uma armadilha que já custou um defeito aqui: na primeira versão os
+números nasciam em `0` e só viravam o valor certo ao entrar na tela.
+Quem imprimisse a página, ou não rolasse até ali, lia **`0 pedidos`** —
+um número errado, não apenas um número sem animação. Se você for
+acrescentar algo que anima, **o valor correto entra primeiro**; o
+reinício em zero acontece depois, e fora da vista.
+
 ## Três coisas que vale saber antes de mexer
 
 **1. Esta é a única rota da loja que executa JavaScript.**

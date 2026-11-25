@@ -1270,70 +1270,90 @@
           "ana": "clica em finalizar",
           "bruno": "clica em finalizar",
           "banco": "duas requisições chegam praticamente juntas",
-          "nota": "O estoque do Chapada Geisha é 1. A Ana quer 1 unidade, o Bruno quer 2."
+          "nota": "O estoque do Chapada Geisha é 1. A Ana quer 1 unidade, o Bruno quer 2.",
+          "estoque": 1,
+          "trava": null
         },
         {
           "t": 1,
           "ana": "BEGIN",
           "bruno": "BEGIN",
           "banco": "duas transações abertas",
-          "nota": "Até aqui, nada travado. As duas vão tentar ler o mesmo café."
+          "nota": "Até aqui, nada travado. As duas vão tentar ler o mesmo café.",
+          "estoque": 1,
+          "trava": null
         },
         {
           "t": 2,
           "ana": "SELECT ... FOR UPDATE",
           "bruno": "",
           "banco": "linha do produto travada pela Ana",
-          "nota": "Quem chega primeiro trava a linha. Não é sorte: é o primeiro a executar o FOR UPDATE."
+          "nota": "Quem chega primeiro trava a linha. Não é sorte: é o primeiro a executar o FOR UPDATE.",
+          "estoque": 1,
+          "trava": "ana"
         },
         {
           "t": 3,
           "ana": "lê estoque = 1 · pediu 1 · ok",
           "bruno": "SELECT ... FOR UPDATE",
           "banco": "Bruno ESPERANDO o lock",
-          "nota": "Aqui está o ponto do trabalho. O Bruno não lê estoque errado — ele simplesmente **espera**. Sem FOR UPDATE, ele leria 1 e também aprovaria."
+          "nota": "Aqui está o ponto do trabalho. O Bruno não lê estoque errado — ele simplesmente **espera**. Sem FOR UPDATE, ele leria 1 e também aprovaria.",
+          "estoque": 1,
+          "trava": "ana"
         },
         {
           "t": 4,
           "ana": "INSERT pedido · INSERT item",
           "bruno": "ainda esperando",
           "banco": "gravações da Ana pendentes",
-          "nota": "Nada é definitivo ainda: o COMMIT é o único ponto em que algo se torna real."
+          "nota": "Nada é definitivo ainda: o COMMIT é o único ponto em que algo se torna real.",
+          "estoque": 1,
+          "trava": "ana"
         },
         {
           "t": 5,
           "ana": "UPDATE estoque = 0",
           "bruno": "ainda esperando",
           "banco": "estoque 1 → 0, pendente",
-          "nota": ""
+          "nota": "",
+          "estoque": 1,
+          "trava": "ana"
         },
         {
           "t": 6,
           "ana": "COMMIT",
           "bruno": "lock liberado",
           "banco": "pedido da Ana GRAVADO · estoque = 0",
-          "nota": "A Ana recebe a confirmação. O lock cai e o Bruno finalmente lê."
+          "nota": "A Ana recebe a confirmação. O lock cai e o Bruno finalmente lê.",
+          "estoque": 0,
+          "trava": null
         },
         {
           "t": 7,
           "ana": "Pedido confirmado",
           "bruno": "lê estoque = 0 · pediu 2",
           "banco": "Bruno lê o valor ATUALIZADO",
-          "nota": "Este é o motivo de tudo. O Bruno lê 0, e não 1, porque esperou o COMMIT da Ana."
+          "nota": "Este é o motivo de tudo. O Bruno lê 0, e não 1, porque esperou o COMMIT da Ana.",
+          "estoque": 0,
+          "trava": null
         },
         {
           "t": 8,
           "ana": "",
           "bruno": "ROLLBACK",
           "banco": "nada gravado para o Bruno",
-          "nota": "Rollback completo: nem o cabeçalho do pedido sobrou. O carrinho dele continua intacto, para ele corrigir e tentar de novo."
+          "nota": "Rollback completo: nem o cabeçalho do pedido sobrou. O carrinho dele continua intacto, para ele corrigir e tentar de novo.",
+          "estoque": 0,
+          "trava": null
         },
         {
           "t": 9,
           "ana": "",
           "bruno": "mensagem na tela",
           "banco": "estoque = 0 · 1 pedido · 0 pedidos órfãos",
-          "nota": "A mensagem nomeia o café e informa o saldo real — critério de aceite do RF05. O mesmo lote NÃO foi vendido duas vezes."
+          "nota": "A mensagem nomeia o café e informa o saldo real — critério de aceite do RF05. O mesmo lote NÃO foi vendido duas vezes.",
+          "estoque": 0,
+          "trava": null
         }
       ]
     },

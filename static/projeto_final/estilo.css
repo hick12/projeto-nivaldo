@@ -1061,6 +1061,209 @@ h4, h5 { margin: var(--e-3) 0 var(--e-1); }
 .rodape-volta { margin-top: var(--e-2) !important; }
 
 /* =====================================================================
+   Movimento
+
+   Três regras que valeram para tudo aqui:
+
+   1. Só `transform` e `opacity` são animados. São as duas propriedades
+      que o navegador resolve na GPU, sem recalcular layout. Animar
+      `width` ou `top` força reflow a cada quadro e engasga no projetor.
+   2. Nada essencial depende de animação. Com `prefers-reduced-motion`
+      ligado, ou com o script fora do ar, a página continua inteira — os
+      números no valor final, as seções visíveis, as barras cheias.
+   3. Movimento que não explica nada fica discreto e some rápido. O
+      brilho do cursor é o único enfeite puro, e ele é quase
+      imperceptível de propósito.
+   ===================================================================== */
+
+/* --- Barra de leitura ----------------------------------------------- */
+
+.progresso-leitura {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 2px;
+  z-index: 60;
+  background: transparent;
+  pointer-events: none;
+}
+
+.progresso-cheia {
+  height: 100%;
+  background: var(--terracota);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+/* --- O brilho que segue o cursor -------------------------------------
+   Enfeite declarado. Fica ATRÁS de tudo (z-index 0 e o conteúdo em 1),
+   não intercepta clique e só existe onde há cursor de verdade. A posição
+   vem das variáveis --x e --y, definidas por script. */
+
+.brilho-cursor {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    380px circle at var(--x, 50%) var(--y, 30%),
+    rgba(200, 80, 42, 0.07),
+    transparent 70%
+  );
+}
+
+.indice, .relatorio, .abrir-indice { position: relative; z-index: 1; }
+
+/* --- Revelação ao rolar ---------------------------------------------- */
+
+.a-revelar {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity .5s ease, transform .5s cubic-bezier(.22,.61,.36,1);
+}
+
+.a-revelar.revelado { opacity: 1; transform: none; }
+
+/* --- Indicadores ao vivo --------------------------------------------- */
+
+.cartao-valor { font-variant-numeric: tabular-nums; }
+
+/* A barra cresce de zero quando entra na tela. */
+.barra-cheia { transition: width .9s cubic-bezier(.22,.61,.36,1); }
+
+/* --- Diagrama ER: as linhas se desenham ------------------------------ */
+
+.er-svg.tracando .er-linha {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: tracar-linha .65s cubic-bezier(.22,.61,.36,1) forwards;
+}
+
+/* O atraso escalonado faz as ligações aparecerem uma a uma, na ordem em
+   que o modelo se monta: categoria -> produto, cliente -> pedido, e daí
+   para os itens. */
+.er-svg.tracando .er-linha:nth-of-type(1) { animation-delay: .05s; }
+.er-svg.tracando .er-linha:nth-of-type(2) { animation-delay: .20s; }
+.er-svg.tracando .er-linha:nth-of-type(3) { animation-delay: .35s; }
+.er-svg.tracando .er-linha:nth-of-type(4) { animation-delay: .50s; }
+
+@keyframes tracar-linha { to { stroke-dashoffset: 0; } }
+
+/* Selecionar uma tabela acende quem se relaciona com ela e apaga o
+   resto. É o que transforma o diagrama em explicação. */
+.er-caixa, .er-linha, .er-cardinalidade {
+  transition: opacity .25s ease, stroke .25s ease;
+}
+
+.er-caixa.apagada { opacity: .32; }
+.er-linha.apagada, .er-cardinalidade.apagada { opacity: .18; }
+
+.er-linha.realcada { stroke: var(--terracota); stroke-width: 2.5; }
+.er-cardinalidade.realcada { fill: var(--terracota); font-weight: 600; }
+
+.er-caixa.ativa rect { transition: none; }
+
+/* --- Simulação do checkout ------------------------------------------- */
+
+.faixa-nome .cadeado {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 12px;
+  animation: cadeado-entra .3s ease;
+}
+
+@keyframes cadeado-entra {
+  from { opacity: 0; transform: scale(.4); }
+  to   { opacity: 1; transform: none; }
+}
+
+.estoque-vivo {
+  display: flex;
+  align-items: baseline;
+  gap: var(--e-1);
+  margin: var(--e-1) 0 0 !important;
+  padding-top: var(--e-1);
+  border-top: 1px solid var(--linha);
+}
+
+.estoque-rotulo {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--tinta-fraca);
+}
+
+.estoque-numero {
+  font-family: "DM Serif Display", Georgia, serif;
+  font-size: 30px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--tinta);
+}
+
+/* Pisca SÓ quando o número muda de verdade — e ele só muda no COMMIT,
+   que é o ponto inteiro da simulação. */
+.estoque-numero.mudou { animation: estoque-muda .6s ease; }
+
+@keyframes estoque-muda {
+  0%   { transform: scale(1);   color: var(--tinta); }
+  35%  { transform: scale(1.3); color: var(--terracota); }
+  100% { transform: scale(1);   color: var(--tinta); }
+}
+
+.faixa-banco.esgotado .estoque-numero { color: var(--vermelho); }
+
+/* A faixa de quem está esperando o lock respira, para a espera ficar
+   visível em vez de parecer página travada. */
+.faixa.esperando { animation: respirar 1.6s ease-in-out infinite; }
+
+@keyframes respirar {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .62; }
+}
+
+/* E a de quem levou ROLLBACK treme uma vez. */
+.faixa.falhou { animation: tremer .4s ease; }
+
+@keyframes tremer {
+  0%, 100% { transform: translateX(0); }
+  25%      { transform: translateX(-5px); }
+  75%      { transform: translateX(5px); }
+}
+
+/* --- EXPLAIN: as barras em escala ------------------------------------ */
+
+.explain-rodape {
+  display: flex;
+  align-items: center;
+  gap: var(--e-2);
+}
+
+.explain-trilho {
+  flex: 1;
+  height: 8px;
+  background: var(--linha);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.explain-cheia {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 1s cubic-bezier(.22,.61,.36,1);
+}
+
+.explain-antes  .explain-cheia { background: var(--vermelho); }
+.explain-depois .explain-cheia { background: var(--verde); }
+
+/* --- Realce ao passar o mouse ---------------------------------------- */
+
+.interativo { transition: border-color .25s ease; }
+.interativo:hover { border-color: var(--linha-forte); }
+
+.cartao-vivo { transition: transform .25s ease, border-color .25s ease; }
+.cartao-vivo:hover { border-color: var(--linha-forte); }
+
+/* =====================================================================
    Telas maiores
    ===================================================================== */
 
@@ -1113,10 +1316,18 @@ h4, h5 { margin: var(--e-3) 0 var(--e-1); }
 /* Quem pediu menos animação no sistema não deve receber nenhuma. */
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
+
   *, *::before, *::after {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
+
+  /* Nada essencial pode depender de animação: aqui o conteúdo aparece
+     direto no estado final, e o enfeite simplesmente não existe. */
+  .a-revelar { opacity: 1 !important; transform: none !important; }
+  .brilho-cursor { display: none !important; }
+  .er-svg.tracando .er-linha { stroke-dasharray: none; stroke-dashoffset: 0; }
 }
 
 /* =====================================================================
