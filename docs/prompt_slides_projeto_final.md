@@ -12,6 +12,27 @@ Palorca. Apresentação em **02/12**, **15 minutos**, **até 10 slides**.
 
 Tudo se chama **Projeto Final**. Nada de "Atividade N".
 
+## Se o site estiver fora do ar
+
+**Confira primeiro:** abra https://nivaldo.felipefurlan.com.br/health. Se
+vier `{"status":"ok","banco":"ok"}`, siga a seção seguinte normalmente. Se
+vier 404 ou erro, **não invente nada e não pule a montagem** — tudo o que
+você precisa está no repositório, que está publicado e atualizado:
+
+- **O conteúdo completo do relatório**, nas 12 seções, em
+  `static/projeto_final/conteudo.json` →
+  https://raw.githubusercontent.com/hick12/projeto-nivaldo/main/static/projeto_final/conteudo.json
+- **As capturas de tela**, em `docs/evidencias/projeto_final/` →
+  `https://raw.githubusercontent.com/hick12/projeto-nivaldo/main/docs/evidencias/projeto_final/<arquivo>`
+- **As evidências e os números medidos**, em `docs/evidencias.md` →
+  https://raw.githubusercontent.com/hick12/projeto-nivaldo/main/docs/evidencias.md
+- **O que mudou e as limitações**, em `docs/projeto_final_entrega.md`
+
+Nesse caso, use os números que estão nos documentos e **marque no deck
+quais vieram de medição guardada**, em vez de afirmar que são de agora.
+Avise o Felipe que o site estava fora, para ele decidir se refaz os
+prints antes da defesa.
+
 ## Antes de escrever qualquer slide
 
 Abra estes endereços e use o que vir — não escreva de memória:
@@ -129,6 +150,37 @@ Vale contar o contrário também: com os poucos pedidos da base de
 demonstração o planejador escolhe `Seq Scan`, e **está certo**, porque a
 tabela inteira cabe numa página de disco. Admitir isso vale mais que
 escondê-lo — mostra que o grupo entende o planejador, não só o comando.
+
+## O slide que vale mais que todos os outros
+
+O manual pontua **"domínio técnico e reconhecer limitações"**. O grupo tem
+uma história que atende isso melhor que qualquer gráfico, e ela é
+verdadeira.
+
+Com o trabalho pronto e a suíte de testes toda verde, o código passou por
+revisão independente. Ela achou **dois defeitos no coração do projeto** —
+na própria transação de checkout:
+
+1. O `SELECT ... FOR UPDATE` travava a linha certa no banco e, ainda
+   assim, **não protegia a venda**. A tela do carrinho já tinha carregado
+   o produto na sessão do ORM, e o ORM devolvia o objeto em memória em
+   vez da linha recém-travada. A validação decidia com o saldo de antes
+   do lock. Resultado reproduzido: **duas unidades vendidas de um estoque
+   de uma, sem erro nenhum**.
+2. A validação era por linha do carrinho e não por produto. Mesmo café em
+   duas moagens somando mais que o estoque gravava −1, e aí **a constraint
+   do banco segurou** — que é exatamente o argumento do trabalho sobre
+   integridade morar no SGBD.
+
+Os dois foram corrigidos, com quatro testes de regressão na fronteira,
+conferidos desfazendo cada correção para garantir que pegam.
+
+**A frase para a defesa:** *"Suíte verde não é prova de correção. É prova
+de que o que foi testado passou. O que achou os dois defeitos foi revisão
+por quem não escreveu o código."*
+
+O relato completo está na seção 18 de `docs/evidencias.md`. Se o professor
+perguntar sobre limitações ou sobre o que deu errado, **é esta a resposta**.
 
 ## Roteiro da demonstração ao vivo — 4 minutos
 
