@@ -42,7 +42,7 @@ seção 9 e são preenchidas depois do deploy.
 
 | Arquivo | O que mudou |
 |---|---|
-| `app.py` | Detecção de produção e os segredos sem valor padrão; papel de gestor e o decorador `gestor_obrigatorio`; leitura de `SQL/dashboard.sql` e a função `indicadores`; a máquina de estados do pedido e `alterar_status_pedido`; o blueprint `api` com nove endpoints; logs estruturados; o comando `seed-demo`; a CSP com a exceção de `/projeto-final`; CSRF aceitando o cabeçalho `X-CSRF-Token`; páginas de erro 403 e 500 |
+| `app.py` | Detecção de produção e os segredos sem valor padrão; papel de gestor e o decorador `gestor_obrigatorio`; leitura de `SQL/dashboard.sql` e a função `indicadores`; a máquina de estados do pedido e `alterar_status_pedido`; o blueprint `api` com oito endpoints; logs estruturados; o comando `seed-demo`; a CSP com a exceção de `/projeto-final`; CSRF aceitando o cabeçalho `X-CSRF-Token`; páginas de erro 403 e 500 |
 | `SQL/schema.sql` | `CREATE INDEX idx_pedidos_criado_em ON pedidos(criado_em DESC)`, com o comentário justificando |
 | `SQL/consultas.sql` | Seção 5 nova: o `EXPLAIN ANALYZE` de antes e depois do índice, com os números medidos e o preço em disco |
 | `README.md` | Reescrito no formato do manual: objetivo, segmento e contexto, arquitetura em Mermaid, pré-requisitos com versões, configuração, carga de dados, testes, endpoints, credenciais fictícias e links |
@@ -55,8 +55,8 @@ seção 9 e são preenchidas depois do deploy.
 | `tests/test_seguranca.py` | Testes da exceção de CSP da rota `/projeto-final` |
 
 ```
- 11 arquivos alterados · 3.010 linhas acrescentadas · 117 removidas
- 15 arquivos e pastas novos
+ 11 arquivos alterados · 12.152 linhas acrescentadas · 117 removidas
+ 18 arquivos e pastas novos
 ```
 
 ---
@@ -346,6 +346,28 @@ railway run flask --app app seed-demo
 |---|---|
 | **Deploy automático a cada push** | Documentado em `docs/evidencias.md`, seção 8.4. O webhook do GitHub para o Railway não estava entregando; o deploy saía com `railway deployment redeploy --from-source`. **Confirmar se ainda é o caso antes de contar com o push automático** |
 | **Sub Resource Integrity no Google Fonts** | Não aplicável ao Google Fonts, que serve formatos diferentes por navegador. Mitigado pela CSP. A correção definitiva é hospedar as fontes junto com a aplicação |
+
+### Dois defeitos graves encontrados por revisão, e corrigidos
+
+Com a entrega pronta e a suíte verde, o código novo passou por revisão
+independente. Ela achou dois defeitos no `finalizar_pedido` — anteriores
+a esta entrega, e invisíveis para todos os testes que existiam.
+
+1. **O `SELECT ... FOR UPDATE` protegia o banco e não a aplicação.** A
+   rota de checkout carrega o produto na sessão antes da transação, e o
+   ORM devolve o objeto já carregado em vez da linha recém-travada. O
+   lock era tomado, a concorrente esperava, e a validação decidia com o
+   saldo de antes. Reproduzido: **duas unidades vendidas de um estoque de
+   uma, sem erro nenhum.** Corrigido com `populate_existing=True`.
+2. **A validação era por linha do carrinho, não por produto.** Mesmo café
+   em duas moagens somando mais que o estoque gravava `-1`, e o cliente
+   recebia página 500 em vez da mensagem de negócio. Corrigido
+   consolidando a demanda por produto antes de validar.
+
+Quatro testes de regressão na fronteira, os dois principais conferidos
+desfazendo cada correção. O relato completo está em `docs/evidencias.md`,
+seção 18 — e vale levar para a defesa: é a melhor evidência de
+maturidade técnica que o projeto tem.
 
 ### Um defeito encontrado nesta rodada, e não corrigido
 

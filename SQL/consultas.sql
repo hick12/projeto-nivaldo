@@ -259,8 +259,9 @@ WHERE i.pedido_id = 1;
 -- =====================================================================
 -- 5. PROJETO FINAL — o indice novo: idx_pedidos_criado_em
 --
--- O painel de indicadores (SQL/dashboard.sql) tem sete consultas e TODAS
--- comecam filtrando o periodo:
+-- O painel de indicadores (SQL/dashboard.sql) tem sete consultas, e SEIS
+-- delas comecam filtrando o periodo (a de estoque critico nao filtra, de
+-- proposito: estoque e saldo de agora):
 --
 --     WHERE criado_em >= CURRENT_TIMESTAMP - make_interval(days => :dias)
 --

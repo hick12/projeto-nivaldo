@@ -7,15 +7,28 @@ substitui.
 ```
 static/projeto_final/
 ├── conteudo.json   ← TODO o texto do relatório. É o único que você precisa trocar
-├── app.js          só renderiza. Não contém texto nenhum
+├── app.js          só renderiza. Nenhum texto do RELATÓRIO (mas tem rótulos de interface)
 ├── estilo.css      o visual
 └── LEIAME.md       este arquivo
 ```
 
 **Para publicar uma versão nova do relatório, troque apenas o
-`conteudo.json` e faça o commit.** O deploy é automático a cada push na
-`main`, e a página passa a servir o texto novo. Nada mais precisa ser
-tocado — nem o `app.js`, nem o `estilo.css`, nem o `app.py`.
+`conteudo.json` e faça o commit.**
+
+> ⚠️ O deploy **deveria** sair sozinho a cada push na `main`, mas essa
+> automação está pendente: o webhook do GitHub para o Railway não estava
+> disparando (`docs/evidencias.md`, seção 8.4). Depois do push, confira
+> que a página mudou, e se não mudou, force com
+> `railway deployment redeploy --from-source`.
+
+Nada do relatório precisa ser tocado — nem o `app.js`, nem o
+`estilo.css`, nem o `app.py`.
+
+> Ressalva honesta: o `app.js` **não** é livre de texto. Ele traz os
+> rótulos da interface dos componentes — "Pedidos no período", "Simulação
+> ilustrativa", os cabeçalhos da tabela de casos de teste, as mensagens
+> de erro. O que vem do `conteudo.json` é todo o texto **do relatório**.
+> Se precisar mudar um rótulo de componente, ele está no `app.js`.
 
 Antes do commit, vale um minuto de conferência:
 

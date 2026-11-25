@@ -402,8 +402,9 @@ a tabela de casos de teste.
 
 Ele **complementa** o relatório entregue em documento; não o substitui.
 
-**Todo o texto vem de `static/projeto_final/conteudo.json`** — a página só
-renderiza. Para publicar uma versão nova do relatório, troque apenas esse
+**Todo o texto do relatório vem de
+`static/projeto_final/conteudo.json`** — a página só renderiza. (Os
+rótulos da interface dos componentes ficam no `app.js`.) Para publicar uma versão nova do relatório, troque apenas esse
 arquivo e faça o commit. O formato está documentado em
 [`static/projeto_final/LEIAME.md`](static/projeto_final/LEIAME.md).
 
@@ -560,7 +561,13 @@ O guia completo está em [`docs/deploy_railway.md`](docs/deploy_railway.md).
 A escolha do Railway em vez do Render + Neon sugeridos no material está
 justificada em [`docs/decisoes.md`](docs/decisoes.md), decisão D01.
 
-Deploy automático a cada push na `main`. Mudanças de **estrutura** do banco
+O deploy deveria ser automático a cada push na `main`, mas **isso está
+pendente**: o webhook do GitHub para o Railway não estava disparando, e o
+deploy só saía com `railway deployment redeploy --from-source`. Está
+registrado em [`docs/evidencias.md`](docs/evidencias.md), seção 8.4 —
+**confirme antes de contar com o push automático.**
+
+Mudanças de **estrutura** do banco
 em produção vão pelo
 [`SQL/migracao_projeto_final.sql`](SQL/migracao_projeto_final.sql), nunca
 pelo `init-db`.

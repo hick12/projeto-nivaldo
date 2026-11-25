@@ -420,7 +420,7 @@
         },
         {
           "tipo": "texto",
-          "md": "### Segurança aplicada\n\nA aplicação passou por uma varredura com OWASP ZAP, que apontou onze alertas. Oito eram acionáveis e foram corrigidos."
+          "md": "### Segurança aplicada\n\nA aplicação passou por uma varredura com OWASP ZAP, que apontou onze alertas. Oito eram acionáveis; sete foram corrigidos. O que sobrou é o *Sub Resource Integrity* do Google Fonts, que não é aplicável — o Google serve formatos diferentes por navegador, então o hash mudaria por visitante. A mitigação é a própria CSP, que restringe a origem das fontes."
         },
         {
           "tipo": "lista",
@@ -509,7 +509,7 @@
             ],
             [
               "`idx_pedidos_criado_em`",
-              "**Novo no Projeto Final.** O filtro de período das sete consultas do painel, e o `ORDER BY criado_em DESC` da lista de pedidos",
+              "**Novo no Projeto Final.** O filtro de período de seis das sete consultas do painel — a de estoque crítico não filtra, porque estoque é saldo de agora — e o `ORDER BY criado_em DESC` da lista de pedidos",
               "Bitmap Index Scan no filtro; Index Scan sem Sort na listagem"
             ]
           ]
@@ -565,7 +565,7 @@
         },
         {
           "tipo": "texto",
-          "md": "### A API\n\nNove endpoints, documentados em `docs/api.md`, com especificação OpenAPI 3 e coleção do Postman. Erro sempre no mesmo formato `{\"erro\": \"...\"}`, com o código HTTP dizendo a natureza.\n\n**Dinheiro sai como string decimal, nunca como número JSON.** `\"148.00\"`, não `148.0`: número JSON é float IEEE 754, exatamente o tipo que o projeto rejeitou no banco por não representar 0,10 de forma exata."
+          "md": "### A API\n\nOito endpoints, documentados em `docs/api.md`, com especificação OpenAPI 3 e coleção do Postman. Erro sempre no mesmo formato `{\"erro\": \"...\"}`, com o código HTTP dizendo a natureza.\n\n**Dinheiro sai como string decimal, nunca como número JSON.** `\"148.00\"`, não `148.0`: número JSON é float IEEE 754, exatamente o tipo que o projeto rejeitou no banco por não representar 0,10 de forma exata."
         },
         {
           "tipo": "tabela",
@@ -639,6 +639,50 @@
         {
           "tipo": "texto",
           "md": "### Um teste nosso estava errado, e vale contar\n\nA primeira versão do teste de moagem inválida usava o valor `'EXTRAFINA'`. O banco recusou — mas por `StringDataRightTruncation`, não pelo `CHECK`: a coluna é `VARCHAR(6)` e a palavra tem nove caracteres. O dado era barrado do mesmo jeito, só que **pela regra errada**, e o teste não provava o que se propunha.\n\nTrocamos para `'MOIDA'`, que cabe em seis caracteres e não está no domínio, e separamos o caso do tamanho num teste próprio. A coluna tem duas defesas independentes e agora cada uma tem o seu teste."
+        },
+        {
+          "tipo": "texto",
+          "md": "### O defeito que a suíte inteira não via\n\nCom a entrega pronta e a suíte verde, o código passou por **revisão independente** — feita por quem não o escreveu. Ela encontrou dois defeitos no `finalizar_pedido`, a função que é o argumento central deste trabalho. Os dois eram invisíveis para todos os testes que existiam."
+        },
+        {
+          "tipo": "texto",
+          "md": "**O primeiro é o mais grave: o `SELECT ... FOR UPDATE` protegia o banco e não protegia a aplicação.**\n\nA rota de checkout lê os produtos para desenhar a tela do carrinho antes de chamar a transação. Isso já carrega o produto na sessão do ORM. Quando o `FOR UPDATE` roda em seguida, o SQLAlchemy encontra o objeto já carregado e, por padrão, **devolve o que está em memória e descarta a linha recém-lida do banco**.\n\nO lock era tomado corretamente no PostgreSQL. A transação concorrente de fato esperava. E a validação decidia com o saldo de **antes** do lock."
+        },
+        {
+          "tipo": "codigo",
+          "linguagem": "text",
+          "codigo": "A: carrinho_detalhado leu estoque = 1\nB: outra compra commitou. No banco agora estoque = 0\nA: VENDA APROVADA -> pedido #41\nA: estoque final no banco = 0\n\n>>> FALHA: duas unidades vendidas de um estoque de uma.",
+          "legenda": "Reproduzido contra o PostgreSQL antes de consertar. A baixa é gravada como valor absoluto, não como decremento, então nem a constraint de estoque não-negativo pegava — nenhum erro em lugar nenhum. E acontecia só pelo navegador, que é o caminho que o cliente usa."
+        },
+        {
+          "tipo": "texto",
+          "md": "**O segundo:** a validação era por linha do carrinho, não por produto. O estoque é do café, não da moagem — mas uma linha em grão de 1 unidade e outra moída fina de 1 passavam as duas contra um estoque de 1, porque cada uma era comparada isoladamente. A gravação tentava `estoque = -1`, o `CHECK` do banco barrava, e o cliente recebia uma página de erro em vez da mensagem dizendo qual café faltou.\n\nRepare no detalhe: **a constraint do banco funcionou.** Ela foi a última linha de defesa e impediu o estoque negativo, exatamente como o requisito promete. O que falhou foi a aplicação, que não traduziu aquilo em mensagem de negócio."
+        },
+        {
+          "tipo": "tabela",
+          "legenda": "Por que a suíte não via: ela não testava a fronteira.",
+          "colunas": [
+            "Teste que existia",
+            "Por que não pegava"
+          ],
+          "linhas": [
+            [
+              "Estoque insuficiente",
+              "Pedia 5 unidades de um estoque de 1 — folgado demais. O defeito mora em pedir exatamente o saldo"
+            ],
+            [
+              "Mesmo café em duas moagens",
+              "2 + 1 unidades de um estoque de 10 — a soma nunca cruzava o limite"
+            ],
+            [
+              "Transação concorrente",
+              "Não existia. Nenhum teste commitava uma compra no meio de outra"
+            ]
+          ]
+        },
+        {
+          "tipo": "texto",
+          "md": "Quatro testes de regressão foram acrescentados, todos na fronteira. Os dois principais foram conferidos **desfazendo cada correção e rodando**: falham contra o código antigo e passam contra o novo — ou seja, guardam de verdade.\n\n**A lição:** suíte verde não é prova de correção, é prova de que o que foi testado passou. Quem escreve o código revisa o que quis dizer; quem lê de fora revisa o que está escrito."
         },
         {
           "tipo": "texto",
@@ -743,6 +787,7 @@
         {
           "tipo": "lista",
           "itens": [
+            "**Um `SELECT ... FOR UPDATE` pode travar a linha certa e ainda assim não proteger nada.** Se o objeto já estiver carregado na sessão do ORM, o lock é tomado no banco e o valor usado na validação é o anterior a ele. Foi o defeito mais grave do projeto, e está contado na seção 9.",
             "**O índice existir não obriga o planejador a usá-lo.** Com 12 cafés, o `idx_produtos_nome` é ignorado — e o planejador está certo, porque a consulta precisa de todas as linhas. Só com volume ele passa a compensar, e medimos onde fica a virada.",
             "**Sequences não voltam atrás no PostgreSQL, nem em rollback.** O primeiro cliente de produção ficou com `id = 2`. É comportamento esperado, e é o que garante que duas compras simultâneas nunca recebam o mesmo id.",
             "**Um teste pode passar pelo motivo errado.** O caso da moagem `'EXTRAFINA'` barrada pelo tamanho, e não pelo `CHECK`, está contado na seção 9.",
@@ -1128,7 +1173,7 @@
             },
             {
               "nome": "idx_pedidos_criado_em",
-              "porque": "novo no Projeto Final: o filtro de período das sete consultas do painel e o ORDER BY da lista de pedidos"
+              "porque": "novo no Projeto Final: o filtro de período de seis das sete consultas do painel (a de estoque crítico não filtra: estoque é saldo de agora) e o ORDER BY da lista de pedidos"
             }
           ]
         },
@@ -1352,6 +1397,38 @@
       "legenda": "Casos de teste automatizados. Filtre por tipo.",
       "nota": "Todos rodam contra um PostgreSQL de verdade, num banco separado — nunca SQLite, porque o SELECT ... FOR UPDATE e as constraints CHECK são justamente o que precisa ser testado.",
       "casos": [
+        {
+          "tipo": "Transação",
+          "caso": "Estoque exato é aceito",
+          "entrada": "Estoque 1, pedido de 1",
+          "esperado": "Aceita e zera o estoque — a fronteira pelo lado de cima",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_estoque_exato_e_aceito"
+        },
+        {
+          "tipo": "Transação",
+          "caso": "Duas moagens que cabem no estoque passam",
+          "entrada": "Estoque 10; 6 em GRAO + 4 em FINA",
+          "esperado": "Aceita, grava duas linhas de item e faz uma baixa só de 10 — a consolidação não pode recusar o que cabe",
+          "obtido": "Conforme o esperado",
+          "evidencia": "test_duas_moagens_do_mesmo_cafe_cabendo_no_estoque_passa"
+        },
+        {
+          "tipo": "Transação",
+          "caso": "Mesmo café em duas moagens respeita o estoque somado",
+          "entrada": "Estoque 1; carrinho com 1 unidade em GRAO e 1 em FINA do mesmo café",
+          "esperado": "Recusa dizendo 'você pediu 2 e temos 1' — e não página 500 por violação de constraint",
+          "obtido": "Conforme o esperado. Falha contra o código anterior à correção",
+          "evidencia": "test_mesmo_cafe_em_duas_moagens_respeita_o_estoque_somado"
+        },
+        {
+          "tipo": "Transação",
+          "caso": "FOR UPDATE enxerga compra concorrente já commitada",
+          "entrada": "Produto carregado na sessão com estoque 1; outra conexão leva a última unidade e commita; então o checkout roda",
+          "esperado": "Recusa, com disponível = 0 — a validação tem que usar o saldo lido DEPOIS do lock, não o de antes",
+          "obtido": "Conforme o esperado. Falha contra o código anterior à correção",
+          "evidencia": "test_for_update_enxerga_o_estoque_de_outra_compra_ja_commitada"
+        },
         {
           "tipo": "Transação",
           "caso": "Compra normal",

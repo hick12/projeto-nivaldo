@@ -959,7 +959,7 @@ Verificado no Chromium, em `/projeto-final`:
 
 ```
 12 seções no índice lateral · 12 seções renderizadas
-7 componentes interativos montados
+7 instâncias de 6 componentes distintos (o as_is_to_be aparece duas vezes)
 11 tabelas · 15 blocos de código
 0 erros no console · 0 violações de CSP
 0 blocos com dado faltando
@@ -970,7 +970,7 @@ Cada componente, exercitado:
 | Componente | Verificação |
 |---|---|
 | `as_is_to_be` | O botão alterna entre os dois fluxos; o AS IS mostra as falhas em vermelho, o TO BE os pontos de validação em verde |
-| `er` | Clicar em `itens_pedido` abre as 7 colunas com tipo e constraint, mais o índice que a tabela usa |
+| `er` | Clicar em `itens_pedido` abre as 6 colunas com tipo e constraint, mais a constraint composta e o índice que a tabela usa |
 | `checkout` | No passo 9 de 10, a faixa do Bruno está em estado de falha e a narração diz *"Rollback completo: nem o cabeçalho do pedido sobrou"* |
 | `explain` | Os dois planos lado a lado, com 6,713 ms → 0,900 ms e 10,401 ms → 0,031 ms |
 | `indicadores` | Leu `/api/resumo` ao vivo e mostrou **42 de 42 pedidos conciliados** |
@@ -1006,3 +1006,106 @@ continua sem poder executar.
 
 Em `docs/evidencias/projeto_final/`. A lista, com o que cada um comprova,
 está em `docs/projeto_final_entrega.md`.
+
+---
+
+## 18. O defeito que a suíte inteira não via
+
+Vale contar na defesa, e vale mais que qualquer teste que passou de
+primeira.
+
+Depois de a entrega estar pronta e com a suíte verde, o código novo
+passou por **revisão independente**. Ela encontrou dois defeitos no
+`finalizar_pedido` — a função que é o argumento central do trabalho. Os
+dois são anteriores a esta entrega e os dois eram invisíveis para a suíte
+que existia.
+
+### 18.1 O `SELECT ... FOR UPDATE` protegia o banco e não protegia a aplicação
+
+A rota `/checkout` chama `carrinho_detalhado()` **antes** de
+`finalizar_pedido()`, para desenhar a tela. Aquilo já carrega o `Produto`
+na sessão do ORM. Quando o `SELECT ... FOR UPDATE` roda em seguida, o
+SQLAlchemy encontra o objeto no *identity map* e, por padrão, **devolve o
+objeto em memória e descarta a linha recém-lida do banco**.
+
+Resultado: o lock era tomado corretamente no PostgreSQL, a transação
+concorrente de fato esperava — e a validação decidia com o saldo de
+**antes** do lock.
+
+Reproduzido contra o PostgreSQL, com o `Chapada Geisha` de estoque 1:
+
+```
+A: carrinho_detalhado leu estoque = 1
+B: outra compra commitou. No banco agora estoque = 0
+A: VENDA APROVADA -> pedido #41
+A: estoque final no banco = 0
+
+>>> FALHA: duas unidades vendidas de um estoque de uma.
+```
+
+A baixa é gravada como valor absoluto (`SET estoque = 0`), não como
+decremento, então nem o `ck_produtos_estoque` pegava. **Nenhum erro em
+lugar nenhum.**
+
+Era exatamente a venda em duplicidade que a função existe para impedir, e
+acontecia **só pelo navegador** — o caminho que o cliente usa, e o que o
+professor vai abrir.
+
+A correção tem uma linha:
+
+```python
+db.select(Produto)
+  .where(Produto.id == produto_id)
+  .with_for_update()
+  .execution_options(populate_existing=True)   # <- esta
+```
+
+### 18.2 A validação era por linha do carrinho, não por produto
+
+O estoque é do **café**, não da moagem. Com estoque 1, uma linha em
+`GRAO` de 1 unidade e outra em `FINA` de 1 passavam as duas, porque cada
+uma era comparada isoladamente com o saldo cheio.
+
+A fase 2 gravava `estoque = -1`, o `CHECK` do banco barrava com
+`IntegrityError` — que **não** é `ErroCheckout` — e o cliente recebia uma
+página 500 em vez da mensagem dizendo qual café faltou.
+
+```
+estoque = 1; carrinho: 1 GRAO + 1 FINA do mesmo café
+>>> FALHA: IntegrityError em vez de ErroCheckout
+    (o cliente recebe página 500, sem saber qual café faltou)
+```
+
+Repare no detalhe: **a constraint do banco funcionou**. Ela foi a última
+linha de defesa e impediu o estoque negativo, exatamente como o RNF01
+promete. O que falhou foi a aplicação, que não traduziu aquilo em
+mensagem de negócio.
+
+A correção consolida a demanda por produto antes de validar, e faz uma
+baixa por produto com a quantidade somada. As linhas do item continuam
+separadas por moagem.
+
+### 18.3 Por que a suíte não via
+
+Porque ela não testava a **fronteira**.
+
+| Teste que existia | Por que não pegava |
+|---|---|
+| `test_estoque_insuficiente_faz_rollback_completo` | Pedia 5 de um estoque de 1 — folgado demais. O defeito mora em pedir exatamente o saldo, ou o saldo + 1 |
+| `test_mesmo_cafe_em_moagens_diferentes_vira_duas_linhas` | 2 + 1 unidades de um estoque de 10 — a soma nunca cruzava o limite |
+| Nenhum | Não havia teste com uma transação concorrente commitando no meio |
+
+Quatro testes de regressão foram acrescentados, todos na fronteira. Os
+dois principais foram conferidos **desfazendo cada correção e rodando**:
+falham contra o código antigo, passam contra o novo.
+
+### 18.4 A lição
+
+Suíte verde não é prova de correção — é prova de que o que foi testado
+passou. Os dois defeitos sobreviveram a uma suíte que cobria compra
+normal, estoque insuficiente, produto inexistente, rollback, preço
+congelado e as constraints do banco.
+
+O que os encontrou foi **revisão por quem não escreveu o código**. Quem
+escreve revisa o que quis dizer; quem lê de fora revisa o que está
+escrito.

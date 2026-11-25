@@ -812,7 +812,9 @@
       cartoes.appendChild(cartao(
         'Cafés no catálogo',
         dados.cafes_no_catalogo,
-        'Em 4 regiões produtoras'
+        // Sem o número de regiões escrito aqui: ele era "4" fixo no
+        // código e viraria mentira no dia em que o catálogo mudasse.
+        'Cafés de origem única, lidos do banco'
       ));
 
       var conc = dados.conciliacao || {};

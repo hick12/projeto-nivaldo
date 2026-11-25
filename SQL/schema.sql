@@ -194,10 +194,13 @@ CREATE INDEX idx_itens_pedido ON itens_pedido(pedido_id);
 
 -- Projeto Final: o filtro de periodo do painel de indicadores.
 --
--- TODA consulta de SQL/dashboard.sql comeca por
--- `criado_em >= CURRENT_TIMESTAMP - make_interval(days => :dias)`. Sao
--- sete indicadores numa unica tela, e sem este indice cada um deles varre
--- `pedidos` inteiro — a tabela que cresce sem limite na loja, uma linha
+-- SEIS das sete consultas de SQL/dashboard.sql comecam por
+-- `criado_em >= CURRENT_TIMESTAMP - make_interval(days => :dias)`. A
+-- setima, estoque_critico, nao filtra periodo de proposito — estoque e
+-- saldo de AGORA — e nem toca em `pedidos`.
+--
+-- Sao seis consultas numa unica tela, e sem este indice cada uma delas
+-- varre `pedidos` inteiro — a tabela que cresce sem limite na loja, uma linha
 -- por venda, para sempre.
 --
 -- A ordem DESC esta aqui porque a lista de pedidos recentes do painel
