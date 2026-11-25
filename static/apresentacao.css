@@ -262,3 +262,81 @@
   .ap-duas     { gap: 6mm; grid-template-columns: 1fr 1fr; }
   .ap-grade-3  { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* =====================================================================
+   Classes que substituem o estilo escrito no HTML
+
+   POR QUE ELAS EXISTEM. A loja serve `style-src 'self'` SEM
+   'unsafe-inline'. O navegador descarta todo atributo `style=` — a
+   diretiva efetiva e `style-src-attr`, que cai no `style-src` quando
+   nao declarada. Esta pagina tinha 28 atributos de estilo e, na versao
+   publicada, ZERO deles tinha efeito. Falha silenciosa: a pagina
+   carregava, o servidor nao registrava erro nenhum, e so o navegador
+   mostrava o resultado errado.
+
+   O pior caso era o slide 12, o da demonstracao: `.ap-lista strong` cai
+   para var(--ink) sobre o fundo var(--ink), e a linha do cenario de
+   erro — o ponto alto da demo — ficava INVISIVEL, com contraste 1:1.
+
+   `unsafe-inline` nao foi considerado: ele valeria para a loja inteira,
+   checkout e painel incluidos, e devolveria o vetor de injecao de CSS
+   que a politica existe para fechar.
+   ===================================================================== */
+
+/* --- Slide escuro: o que os inlines estavam corrigindo -------------- */
+.slide-escuro .ap-lista .ap-texto { color: #c9c2bb; }
+.slide-escuro .ap-lista strong    { color: #fff; }
+.slide-escuro .ap-nota            { color: #9b928a; }
+
+/* --- A grade de numeros --------------------------------------------- */
+.ap-numeros .rotulo-ap    { color: var(--muted); }
+.ap-numeros .ap-cartao h3 { margin-top: var(--s-1); }
+
+/* --- Tipografia ----------------------------------------------------- */
+.ap-medida  { max-width: 60ch; }
+.ap-credito { font-size: 14px; }
+
+.ap-citacao {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: clamp(19px, 2.2vw, 27px);
+  line-height: 1.2;
+  margin: 0;
+}
+
+.ap-cartao-titulo {
+  font-size: clamp(16px, 1.8vw, 20px);
+  margin: 0 0 var(--s-1);
+}
+
+.ap-lema-demo { font-size: clamp(18px, 2.4vw, 28px); }
+
+/* --- Cartoes de problema e de solucao -------------------------------
+   A oposicao vermelho/verde e o argumento visual dos slides 9 e 10. Sem
+   ela os dois cartoes renderizavam brancos e identicos, encostados um
+   no outro, e a comparacao que o slide faz desaparecia. */
+.ap-cartao-erro { background: var(--erro-soft); border-color: var(--erro); }
+.ap-cartao-ok   { background: var(--ok-soft);   border-color: var(--ok); }
+
+.rotulo-erro { color: var(--erro); }
+.rotulo-ok   { color: var(--ok); }
+
+.ap-problema    { margin-bottom: 10px; }
+.ap-solucao     { color: var(--ok); }
+.ap-corpo-forte { color: var(--ink); }
+
+/* --- Espacamento, na escala de 8px que o arquivo ja usa -------------- */
+.ap-mt-2 { margin-top: var(--s-2); }
+.ap-mt-3 { margin-top: var(--s-3); }
+.ap-mb-2 { margin-bottom: var(--s-2); }
+.ap-mb-4 { margin-bottom: var(--s-4); }
+
+/* O PDF dos slides sai desta pagina, e o @media print acima refaz os
+   tamanhos em pt. As classes novas que usam clamp() precisam da
+   contrapartida, senao o impresso sai com a tipografia errada. */
+@media print {
+  .ap-citacao       { font-size: 15pt; }
+  .ap-cartao-titulo { font-size: 12pt; }
+  .ap-lema-demo     { font-size: 20pt; }
+  .ap-medida        { max-width: none; }
+  .ap-credito       { font-size: 9pt; }
+}

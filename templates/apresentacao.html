@@ -13,10 +13,10 @@
       <p class="rotulo-ap">FACAMP · Tratamento e Armazenamento da Informação</p>
       <p class="ap-marca">Torra <span>&amp;</span> Terra</p>
       <p class="ap-lema">Do requisito ao deploy</p>
-      <p class="ap-texto" style="max-width:60ch">
+      <p class="ap-texto ap-medida">
         Como construímos um e-commerce com integridade garantida pelo banco de dados.
       </p>
-      <p class="ap-texto" style="font-size:14px">Prof. Nivaldo T. Marcusso</p>
+      <p class="ap-texto ap-credito">Prof. Nivaldo T. Marcusso</p>
       <div class="ap-baixar">
         <a class="botao botao-primario" href="{{ url_for('static', filename='Torra_e_Terra_apresentacao.pptx') }}">Baixar em PowerPoint</a>
         <a class="botao botao-secundario" href="{{ url_for('catalogo') }}">Ir para a loja</a>
@@ -167,7 +167,7 @@
       <div class="ap-duas">
         <div class="ap-cartao ap-cartao-destaque">
           <p class="rotulo-ap">A pergunta que orientou tudo</p>
-          <p style="font-family:'Instrument Serif',Georgia,serif;font-size:clamp(19px,2.2vw,27px);line-height:1.2;margin:0">
+          <p class="ap-citacao">
             Como concluir um pedido com integridade garantida pelo banco, e não pela boa
             vontade da aplicação?
           </p>
@@ -195,15 +195,15 @@
       <div class="ap-duas">
         <div class="ap-cartao ap-cartao-destaque">
           <p class="rotulo-ap">A decisão de modelagem central</p>
-          <h3 style="font-size:clamp(16px,1.8vw,20px);margin:0 0 8px">A moagem mora no item, não no produto.</h3>
+          <h3 class="ap-cartao-titulo">A moagem mora no item, não no produto.</h3>
           <p>O cliente escolhe na compra. É esse atributo que faz <code>itens_pedido</code>
              ser entidade de verdade, e não tabela de ligação.</p>
         </div>
         <div class="ap-numeros">
-          <div><span class="ap-numero">11</span><p class="rotulo-ap" style="color:var(--muted)">CHECK</p></div>
-          <div><span class="ap-numero">4</span><p class="rotulo-ap" style="color:var(--muted)">Foreign key</p></div>
-          <div><span class="ap-numero">5</span><p class="rotulo-ap" style="color:var(--muted)">Primary key</p></div>
-          <div><span class="ap-numero">3</span><p class="rotulo-ap" style="color:var(--muted)">Unique</p></div>
+          <div><span class="ap-numero">11</span><p class="rotulo-ap">CHECK</p></div>
+          <div><span class="ap-numero">4</span><p class="rotulo-ap">Foreign key</p></div>
+          <div><span class="ap-numero">5</span><p class="rotulo-ap">Primary key</p></div>
+          <div><span class="ap-numero">3</span><p class="rotulo-ap">Unique</p></div>
         </div>
       </div>
       <p class="ap-nota">
@@ -234,7 +234,7 @@
  │   └─ desconta o estoque
  │
  └─ CONFIRMA     ·     ou DESFAZ TUDO, se qualquer coisa falhar</pre>
-      <div class="ap-duas" style="margin-top:var(--s-3)">
+      <div class="ap-duas ap-mt-3">
         <div class="ap-cartao">
           <p class="rotulo-ap">Por que trancar sempre na mesma ordem</p>
           <p>
@@ -264,14 +264,14 @@
       <p class="ap-sub">24 testes contra um PostgreSQL real. Não SQLite.</p>
       <div class="ap-duas">
         <div>
-          <div class="ap-cartao" style="margin-bottom:var(--s-2)">
+          <div class="ap-cartao ap-mb-2">
             <p class="rotulo-ap">Por que não SQLite</p>
             <p>O <code>SELECT … FOR UPDATE</code> e as constraints <code>CHECK</code> são
                justamente o que precisa ser testado — e o SQLite trata os dois de forma
                diferente. Testar contra outro banco daria confiança falsa.</p>
           </div>
-          <div class="ap-cartao" style="background:#fdf0ed;border-color:var(--erro)">
-            <p class="rotulo-ap" style="color:var(--erro)">Um teste nosso estava errado</p>
+          <div class="ap-cartao ap-cartao-erro">
+            <p class="rotulo-ap rotulo-erro">Um teste nosso estava errado</p>
             <p>Inseríamos a moagem <code>'EXTRAFINA'</code> esperando que o CHECK
                recusasse. O banco recusou — mas <strong>por tamanho</strong>: a coluna é
                <code>VARCHAR(6)</code> e a palavra tem 9 caracteres. O dado era barrado,
@@ -311,8 +311,8 @@
         <div class="ap-cartao">
           <span class="ap-bolha ap-bolha-erro">{{ n }}</span>
           <h3>{{ t }}</h3>
-          <p style="margin-bottom:10px">{{ d }}</p>
-          <p style="color:var(--ok)">{{ sol }}</p>
+          <p class="ap-problema">{{ d }}</p>
+          <p class="ap-solucao">{{ sol }}</p>
         </div>
         {% endfor %}
       </div>
@@ -334,9 +334,9 @@
       </p>
       <div class="ap-duas">
         <div>
-          <div class="ap-cartao" style="background:#fdf0ed;border-color:var(--erro);margin-bottom:var(--s-2)">
-            <p class="rotulo-ap" style="color:var(--erro)">O problema sério: pedido feito sem o cliente querer</p>
-            <p style="color:var(--ink)">
+          <div class="ap-cartao ap-cartao-erro ap-mb-2">
+            <p class="rotulo-ap rotulo-erro">O problema sério: pedido feito sem o cliente querer</p>
+            <p class="ap-corpo-forte">
               Imagine que o cliente está logado na nossa loja e abre outro site, malicioso,
               em outra aba. Esse site consegue mandar um “finalizar compra” para a nossa
               loja — e o navegador anexa a identificação do cliente automaticamente,
@@ -344,8 +344,8 @@
               <strong>A compra sairia de verdade.</strong>
             </p>
           </div>
-          <div class="ap-cartao" style="background:var(--ok-soft);border-color:var(--ok)">
-            <p class="rotulo-ap" style="color:var(--ok)">Como resolvemos</p>
+          <div class="ap-cartao ap-cartao-ok">
+            <p class="rotulo-ap rotulo-ok">Como resolvemos</p>
             <p>
               Cada formulário nosso passou a carregar uma <strong>senha escondida</strong>,
               que muda a cada sessão e só o nosso site conhece. Se o pedido chegar sem ela,
@@ -364,7 +364,7 @@
             <li><strong>Não deixar o navegador “adivinhar” tipo de arquivo</strong></li>
             <li><strong>Não guardar em cache</strong> a página de quem está logado</li>
           </ul>
-          <p class="ap-nota" style="margin-top:var(--s-2)">
+          <p class="ap-nota ap-mt-2">
             A loja não usa <strong>nenhum JavaScript</strong>. Isso permitiu bloquear
             scripts por completo — e é a defesa mais forte possível contra código
             injetado. <strong>Esta página de slides também não usa</strong>, pelo mesmo motivo.
@@ -379,7 +379,7 @@
   <section class="slide">
     <div class="slide-interno">
       <h2 class="ap-titulo">O projeto em números</h2>
-      <div class="ap-numeros" style="margin-bottom:var(--s-4)">
+      <div class="ap-numeros ap-mb-4">
         {% for v, t, d in [
           ('5','tabelas','23 constraints e 4 índices'),
           ('24','testes','todos passando'),
@@ -387,14 +387,14 @@
           ('27','commits','um por etapa da construção')] %}
         <div class="ap-cartao">
           <span class="ap-numero">{{ v }}</span>
-          <h3 style="margin-top:8px">{{ t }}</h3>
+          <h3>{{ t }}</h3>
           <p>{{ d }}</p>
         </div>
         {% endfor %}
       </div>
       <div class="ap-cartao ap-cartao-destaque">
         <p class="rotulo-ap">O que ficou de fora, de propósito</p>
-        <p style="color:var(--ink)">
+        <p class="ap-corpo-forte">
           Pagamento real e frete · Área administrativa · Relatórios de venda ·
           <strong>Controle de lote e data de torra</strong>, a evolução mais natural do
           domínio · <strong>Carrinho entre dispositivos</strong>, que é exatamente onde um
@@ -409,15 +409,15 @@
   <section class="slide slide-escuro">
     <div class="slide-interno">
       <h2 class="ap-titulo">Demonstração</h2>
-      <p class="ap-lema" style="font-size:clamp(18px,2.4vw,28px)">nivaldo.felipefurlan.com.br</p>
-      <ol class="ap-lista" style="counter-reset:passo;margin-top:var(--s-3)">
+      <p class="ap-lema ap-lema-demo">nivaldo.felipefurlan.com.br</p>
+      <ol class="ap-lista ap-mt-3">
         <li class="ap-texto">Catálogo e filtro por região</li>
         <li class="ap-texto">Escolha da moagem — a decisão de modelagem, na tela</li>
         <li class="ap-texto">Checkout: o pedido gravado e o estoque baixando</li>
-        <li class="ap-texto" style="color:#fff"><strong style="color:#fff">O cenário de erro: comprar 2 de um café com estoque 1</strong></li>
+        <li class="ap-texto"><strong>O cenário de erro: comprar 2 de um café com estoque 1</strong></li>
         <li class="ap-texto">O <code>SELECT</code> provando que nada foi gravado</li>
       </ol>
-      <p class="ap-nota" style="color:#9b928a">
+      <p class="ap-nota">
         O Chapada Geisha está com estoque 1, de propósito.
       </p>
       <div class="ap-baixar">
