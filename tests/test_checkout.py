@@ -299,3 +299,158 @@ def test_carrinho_vazio_nao_gera_pedido(cliente):
         finalizar_pedido(cliente.id, [])
 
     assert db.session.scalar(db.select(db.func.count(Pedido.id))) == 0
+
+
+# ---------------------------------------------------------------------
+# Regressao — os dois furos que o SELECT ... FOR UPDATE nao cobria
+#
+# Os testes abaixo existem porque a suite inteira passava com os dois
+# defeitos presentes. Nenhum teste anterior exercitava a FRONTEIRA: o
+# caso de estoque insuficiente usava um numero folgado acima do saldo, e
+# o caso de duas moagens usava estoque de sobra. Bug de concorrencia e de
+# limite mora exatamente na fronteira.
+# ---------------------------------------------------------------------
+
+def _conexao_crua():
+    """Uma segunda conexao ao banco de teste, fora da sessao do ORM.
+
+    Serve para simular o que outra pessoa comprando ao mesmo tempo faz:
+    commitar uma mudanca que a nossa transacao ainda nao viu.
+    """
+    import psycopg
+    from flask import current_app
+
+    url = current_app.config["SQLALCHEMY_DATABASE_URI"]
+    return psycopg.connect(url.replace("postgresql+psycopg://", "postgresql://"))
+
+
+def test_for_update_enxerga_o_estoque_de_outra_compra_ja_commitada(
+    aplicacao, cliente, catalogo
+):
+    """O furo que invalidava a tese do trabalho inteiro.
+
+    A rota /checkout chama `carrinho_detalhado()` antes de
+    `finalizar_pedido()`, e aquilo ja carrega o Produto na sessao. Por
+    padrao, o ORM devolve o objeto do identity map e DESCARTA a linha que
+    o SELECT ... FOR UPDATE acabou de ler — entao o lock funcionava no
+    banco e nao funcionava na aplicacao: a validacao decidia com o saldo
+    anterior ao lock.
+
+    O efeito era a venda em duplicidade que esta funcao existe para
+    impedir, e ela so acontecia pelo navegador — o caminho que o cliente
+    usa.
+    """
+    produto = catalogo["escasso"]   # estoque 1
+    produto_id = produto.id
+
+    # 1. O que a rota faz antes do checkout: le o produto para montar a
+    #    tela do carrinho. A partir daqui ele esta na sessao.
+    carregado = db.session.get(Produto, produto_id)
+    assert carregado.estoque == 1
+
+    # 2. Outra pessoa leva a ultima unidade e commita, noutra conexao.
+    with _conexao_crua() as conexao:
+        with conexao.cursor() as cursor:
+            cursor.execute(
+                "UPDATE produtos SET estoque = 0 WHERE id = %s", (produto_id,)
+            )
+        conexao.commit()
+
+    # 3. Agora o checkout. Ele TEM que enxergar o saldo novo.
+    with pytest.raises(EstoqueInsuficiente) as erro:
+        finalizar_pedido(
+            cliente.id,
+            [{"produto_id": produto_id, "quantidade": 1, "moagem": "GRAO"}],
+        )
+
+    assert erro.value.disponivel == 0, (
+        "a validacao decidiu com o estoque anterior ao lock"
+    )
+
+    # E nada foi gravado.
+    assert db.session.scalar(db.select(db.func.count(Pedido.id))) == 0
+
+    with _conexao_crua() as conexao:
+        with conexao.cursor() as cursor:
+            cursor.execute(
+                "SELECT estoque FROM produtos WHERE id = %s", (produto_id,)
+            )
+            assert cursor.fetchone()[0] == 0, "o estoque nao pode ter mudado"
+
+
+def test_mesmo_cafe_em_duas_moagens_respeita_o_estoque_somado(
+    cliente, catalogo
+):
+    """O estoque e do CAFE, nao da moagem.
+
+    Com estoque 1, uma linha em GRAO de 1 unidade e outra em FINA de 1
+    passavam as duas na validacao, porque cada uma era comparada
+    isoladamente com o saldo cheio. A fase 2 gravava estoque = -1, o
+    CHECK do banco barrava com IntegrityError — que nao e ErroCheckout —
+    e o cliente recebia uma pagina 500 em vez da mensagem dizendo qual
+    cafe faltou.
+    """
+    escasso = catalogo["escasso"]   # estoque 1
+
+    with pytest.raises(EstoqueInsuficiente) as erro:
+        finalizar_pedido(
+            cliente.id,
+            [
+                {"produto_id": escasso.id, "quantidade": 1, "moagem": "GRAO"},
+                {"produto_id": escasso.id, "quantidade": 1, "moagem": "FINA"},
+            ],
+        )
+
+    # A mensagem fala da soma, nao de uma das linhas.
+    assert erro.value.disponivel == 1
+    assert erro.value.pedido == 2
+    assert escasso.nome in str(erro.value)
+
+    assert db.session.scalar(db.select(db.func.count(Pedido.id))) == 0
+    db.session.refresh(escasso)
+    assert escasso.estoque == 1
+
+
+def test_duas_moagens_do_mesmo_cafe_cabendo_no_estoque_passa(
+    cliente, catalogo
+):
+    """O outro lado: a consolidacao nao pode recusar o que cabe."""
+    farto = catalogo["farto"]   # estoque 10
+
+    pedido = finalizar_pedido(
+        cliente.id,
+        [
+            {"produto_id": farto.id, "quantidade": 6, "moagem": "GRAO"},
+            {"produto_id": farto.id, "quantidade": 4, "moagem": "FINA"},
+        ],
+    )
+
+    itens = db.session.scalars(
+        db.select(ItemPedido).where(ItemPedido.pedido_id == pedido.id)
+    ).all()
+
+    # Duas linhas, porque a moagem difere — e uma baixa so de 10.
+    assert len(itens) == 2
+    assert {i.moagem for i in itens} == {"GRAO", "FINA"}
+
+    db.session.refresh(farto)
+    assert farto.estoque == 0
+
+    # E o total continua batendo com a soma dos itens.
+    assert pedido.total == sum(
+        (i.quantidade * i.preco_unitario for i in itens), Decimal("0")
+    )
+
+
+def test_estoque_exato_e_aceito(cliente, catalogo):
+    """A fronteira pelo lado de cima: pedir exatamente o que ha."""
+    escasso = catalogo["escasso"]   # estoque 1
+
+    pedido = finalizar_pedido(
+        cliente.id,
+        [{"produto_id": escasso.id, "quantidade": 1, "moagem": "FINA"}],
+    )
+
+    assert pedido.id is not None
+    db.session.refresh(escasso)
+    assert escasso.estoque == 0

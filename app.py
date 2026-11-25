@@ -961,27 +961,56 @@ def finalizar_pedido(cliente_id: int, linhas_carrinho: list[dict]) -> Pedido:
         raise CarrinhoVazio("Seu carrinho está vazio.")
 
     try:
-        # Trava sempre na mesma ordem crescente de id. Duas compras
-        # simultaneas que travassem os mesmos cafes em ordens opostas
-        # ficariam em deadlock, uma esperando o lock da outra; ordenar
-        # elimina o ciclo antes que ele exista.
-        ordenadas = sorted(linhas_carrinho, key=lambda l: l["produto_id"])
+        # --- Fase 0: consolidar a demanda por PRODUTO ------------------
+        #
+        # O carrinho tem uma linha por (produto, moagem): meio quilo em
+        # grao e meio quilo moido fino sao duas linhas do mesmo cafe. O
+        # ESTOQUE, porem, e do cafe — nao da moagem.
+        #
+        # Validar linha a linha contra o estoque cheio deixava passar o
+        # carrinho em que cada linha cabe sozinha mas a soma nao: com
+        # estoque 1, uma linha GRAO de 1 e uma linha FINA de 1 passavam as
+        # duas, e a fase 2 gravava estoque = -1. Quem barrava era o CHECK
+        # do banco, com IntegrityError — que nao e ErroCheckout, entao o
+        # cliente levava uma pagina 500 em vez da mensagem dizendo qual
+        # cafe faltou.
+        demanda = {}
+        for linha in linhas_carrinho:
+            produto_id = linha["produto_id"]
+            demanda[produto_id] = demanda.get(produto_id, 0) + linha["quantidade"]
 
-        # --- Fase 1: travar e validar TODOS os itens -------------------
+        # --- Fase 1: travar e validar TODOS os produtos ----------------
         #
         # Nada e inserido antes desta fase terminar. Assim o caso de erro
         # nao chega sequer a criar o cabecalho do pedido — o rollback
         # continua sendo obrigatorio, mas o banco trabalha menos.
-        travados = []
-        for linha in ordenadas:
-            # with_for_update() gera o SELECT ... FOR UPDATE: segura a linha
-            # do produto ate o fim da transacao. Sem isso, duas compras
-            # simultaneas leem o mesmo estoque 1, ambas aprovam, e o mesmo
-            # lote e vendido duas vezes.
+        #
+        # Trava sempre na mesma ordem crescente de id. Duas compras
+        # simultaneas que travassem os mesmos cafes em ordens opostas
+        # ficariam em deadlock, uma esperando o lock da outra; ordenar
+        # elimina o ciclo antes que ele exista.
+        travados = {}
+        for produto_id in sorted(demanda):
+            # with_for_update() gera o SELECT ... FOR UPDATE: segura a
+            # linha do produto ate o fim da transacao. Sem isso, duas
+            # compras simultaneas leem o mesmo estoque 1, ambas aprovam, e
+            # o mesmo lote e vendido duas vezes.
+            #
+            # populate_existing() NAO e detalhe: sem ele o FOR UPDATE
+            # protege no banco e nao protege na aplicacao. A rota de
+            # checkout chama carrinho_detalhado() antes desta funcao, e
+            # aquilo ja carregou o Produto na sessao. Por padrao o ORM
+            # devolve o objeto que ja esta no identity map e DESCARTA a
+            # linha recem-lida — entao `produto.estoque` continuava sendo
+            # o valor de antes do lock. A compra concorrente commitava, o
+            # FOR UPDATE esperava, lia o saldo novo, e a validacao decidia
+            # com o saldo velho. Era a venda em duplicidade que esta
+            # funcao existe para impedir.
             produto = db.session.scalar(
                 db.select(Produto)
-                .where(Produto.id == linha["produto_id"])
+                .where(Produto.id == produto_id)
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
 
             if produto is None:
@@ -990,12 +1019,13 @@ def finalizar_pedido(cliente_id: int, linhas_carrinho: list[dict]) -> Pedido:
                     "Revise o carrinho e tente de novo."
                 )
 
-            if produto.estoque < linha["quantidade"]:
+            quantidade_pedida = demanda[produto_id]
+            if produto.estoque < quantidade_pedida:
                 raise EstoqueInsuficiente(
-                    produto.nome, produto.estoque, linha["quantidade"]
+                    produto.nome, produto.estoque, quantidade_pedida
                 )
 
-            travados.append((produto, linha))
+            travados[produto_id] = produto
 
         # --- Fase 2: gravar -------------------------------------------
         pedido = Pedido(
@@ -1008,21 +1038,28 @@ def finalizar_pedido(cliente_id: int, linhas_carrinho: list[dict]) -> Pedido:
         # que algo se torna definitivo.
         db.session.flush()
 
+        # Uma linha de item por linha do carrinho: a moagem continua
+        # separando as linhas, que e o que faz itens_pedido ser entidade.
         total = Decimal("0")
-        for produto, linha in travados:
+        for linha in linhas_carrinho:
+            produto = travados[linha["produto_id"]]
             db.session.add(
                 ItemPedido(
                     pedido_id=pedido.id,
                     produto_id=produto.id,
                     quantidade=linha["quantidade"],
-                    # Congelado aqui, e so aqui. Se o preco deste cafe mudar
-                    # amanha, este pedido mantem o valor de hoje.
+                    # Congelado aqui, e so aqui, a partir da linha TRAVADA.
+                    # Se o preco deste cafe mudar amanha, este pedido
+                    # mantem o valor de hoje.
                     preco_unitario=produto.preco,
                     moagem=linha["moagem"],
                 )
             )
-            produto.estoque -= linha["quantidade"]
             total += produto.preco * linha["quantidade"]
+
+        # Uma baixa de estoque por PRODUTO, com a quantidade consolidada.
+        for produto_id, quantidade_pedida in demanda.items():
+            travados[produto_id].estoque -= quantidade_pedida
 
         pedido.total = total
         db.session.commit()
