@@ -388,9 +388,77 @@ correção é mecânica — mover cada `style=` para classe no `static/style.css
 
 ## 9. Verificação em produção
 
-> **Pendente.** Esta seção se preenche depois do push e do deploy. O
-> container em que este trabalho foi feito não tem a CLI do Railway, e a
-> aplicação em produção ainda não recebeu as variáveis novas.
+> **Verificado em 25/11/2026**, de fora, por `curl`, contra
+> `https://nivaldo.felipefurlan.com.br` no commit `bfcc177`. As duas linhas
+> que dependem de sessão autenticada (`/painel` como cliente e como gestor)
+> seguem pendentes até a conta de gestor existir.
+
+### 9.1 Por que estava fora do ar, e o que foi feito
+
+Os dois serviços do projeto `worthy-serenity` estavam **offline**: o
+deployment do Postgres constava `REMOVED` havia três meses, e o da
+aplicação havia dois. Não era defeito da aplicação. A borda do Railway
+devolvia `404 {"status":"error","code":404,"message":"Application not found"}`
+com o cabeçalho **`x-railway-fallback: true`** — ela recebia a requisição e
+não tinha para onde encaminhar. O DNS estava correto, e o domínio gerado
+pelo próprio Railway devolvia o mesmo 404, o que descartou a hipótese de
+domínio desconectado do serviço.
+
+A correção, nesta ordem — banco antes da aplicação, para ela não subir sem
+ter a quem conectar:
+
+1. Redeploy do **Postgres** (`ghcr.io/railwayapp-templates/postgres-ssl:18`).
+   O `postgres-volume` seguia anexado, e os dados sobreviveram inteiros:
+   12 produtos, 5 clientes, 8 pedidos e 11 itens de pedido.
+2. Redeploy da **aplicação** a partir de `hick12/projeto-nivaldo@main`.
+3. `CREATE INDEX IF NOT EXISTS idx_pedidos_criado_em` mais `ANALYZE` nas duas
+   tabelas, pelo console do container do banco, como `postgres` — o
+   `torra_app` não tem privilégio para criar índice, e isso é proposital.
+4. Variável `ADMIN_EMAILS`, seguida do redeploy que o Railway exige para uma
+   variável nova passar a valer.
+5. `flask --app app seed-demo` pelo console do container da aplicação:
+   40 pedidos novos (CRIADO=4, PAGO=10, ENVIADO=20, CANCELADO=6) e 24
+   unidades devolvidas pelos cancelamentos. O Chapada Geisha permaneceu com
+   **estoque 1**, que é a demonstração do rollback.
+
+### 9.2 Saída real dos comandos
+
+```
+$ curl -s https://nivaldo.felipefurlan.com.br/health
+{"banco":"ok","status":"ok"}
+
+$ curl -s https://nivaldo.felipefurlan.com.br/api/produtos | head -c 420
+{"categoria":null,"produtos":[{"categoria":"Cerrado Mineiro","categoria_id":2,
+"descricao":"Acaia despolpado, secagem lenta em estufa. (...)","estoque":27,
+"id":4,"nome":"Alta Mogiana do Cerrado","nota_sensorial":"Caramelo, avela,
+baunilha","peso_g":250,"pontuacao_sca":"85.00","preco":"68.00",
+"regiao":"Minas Gerais","torra":"MEDIA"},{(...)
+
+$ curl -s https://nivaldo.felipefurlan.com.br/api/resumo
+{
+    "cafes_no_catalogo": 12,
+    "cafes_vendidos": 106,
+    "conciliacao": {
+        "conciliados": 40,
+        "pedidos": 40
+    },
+    "gerado_em": "2026-11-25T00:56:09",
+    "participacao_por_regiao": [
+        {"percentual": 59.9, "regiao": "Minas Gerais"},
+        {"percentual": 23.1, "regiao": "Sao Paulo"},
+        {"percentual": 17.0, "regiao": "Bahia"}
+    ],
+    "pedidos_no_periodo": 34,
+    "periodo_dias": 30
+}
+
+$ curl -s -o /dev/null -w "%{http_code}
+" https://nivaldo.felipefurlan.com.br/api/dashboard
+401
+```
+
+**`conciliados` = `pedidos` = 40.** Zero divergência, que é o que esta seção
+existe para provar.
 
 Comandos a rodar, e o que cada um deve devolver:
 
@@ -410,17 +478,17 @@ curl -s https://nivaldo.felipefurlan.com.br/api/resumo
 curl -s -o /dev/null -w "%{http_code}\n" https://nivaldo.felipefurlan.com.br/api/dashboard
 ```
 
-| Verificação | Esperado |
-|---|---|
-| `/health` | `{"status":"ok","banco":"ok"}` |
-| `/api/produtos` | 200, com os 12 cafés e `preco` como string |
-| `/api/resumo` | 200, com a conciliação fechando |
-| `/api/dashboard` **sem login** | **401** — é o controle de acesso funcionando |
-| `/api/pedidos` sem login | **401** |
-| `/painel` sem login | **302** para o login |
-| `/painel` como cliente comum | **403** |
-| `/painel` como gestor | **200**, com os sete indicadores |
-| `/projeto-final` | **200**, com os indicadores ao vivo lendo de produção |
+| Verificação | Esperado | Obtido em 25/11/2026 |
+|---|---|---|
+| `/health` | `{"status":"ok","banco":"ok"}` | ✓ idêntico |
+| `/api/produtos` | 200, com os 12 cafés e `preco` como string | ✓ 200, 12 cafés, `"preco":"68.00"` |
+| `/api/resumo` | 200, com a conciliação fechando | ✓ 200, 40 = 40 |
+| `/api/dashboard` **sem login** | **401** — é o controle de acesso funcionando | ✓ 401 |
+| `/api/pedidos` sem login | **401** | ✓ 401 |
+| `/painel` sem login | **302** para o login | ✓ 302 |
+| `/painel` como cliente comum | **403** | pendente — exige sessão |
+| `/painel` como gestor | **200**, com os sete indicadores | pendente — exige a conta de gestor |
+| `/projeto-final` | **200**, com os indicadores ao vivo lendo de produção | ✓ 200 |
 
 Resultado local equivalente, já verificado:
 
